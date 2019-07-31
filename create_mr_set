@@ -1,0 +1,87 @@
+#!/usr/bin/python3.6
+
+import collections
+import os
+import programs
+import random
+import shutil
+import structure
+import utils
+import xml.etree.ElementTree as ET
+
+def filter_by_resolution(structures, minRes, maxRes):
+  structures[:] = [s for s in structures if s.resolution >= minRes and s.resolution <= maxRes]
+
+def resolution_with_least_structures(structures):
+  resolutions = [s.resolution for s in structures]
+  counter = collections.Counter(resolutions)
+  return counter.most_common()[-1][0]
+
+def extract_protein_pdb(structure):
+  if not os.path.exists(structure.protein_pdb):
+    tmp_pdb = "%s/tmp.pdb" % structure.id
+    programs.pdbcur(structure.refmac_pdb, tmp_pdb, ["lvmodel /1, mostprob"])
+    programs.cextractprotein(tmp_pdb, structure.protein.pdb)
+    os.remove(tmp_pdb)
+
+def extract_protein_seq(structure):
+  if not os.path.exists(structure.protein_seq):
+    programs.cmodeltoseq(structure.protein_pdb, structure.protein_seq)
+
+def is_validation_okay(structure):
+  if not structure.download_validation_report(): return False
+  content = utils.read_gzip(structure.validation_report)
+  attribs = ET.fromstring(content).find("Entry").attrib
+  def key_okay(key, threshold):
+    return key in attribs and float(attribs[key]) >= threshold
+  return (key_okay("relative-percentile-DCC_Rfree", 50) and
+          key_okay("relative-percentile-clashscore", 25) and
+          key_okay("relative-percentile-percent-RSRZ-outliers", 25) and
+          key_okay("relative-percentile-percent-rama-outliers", 25) and
+          key_okay("relative-percentile-percent-rota-outliers", 25))
+
+def is_refinement_okay(structure):
+  if not structure.download_deposited_pdb(): return False
+  if not structure.download_deposited_cif(): return False
+  programs.cif2mtz(structure.deposited_cif, structure.cif2mtz_mtz, structure.cif2mtz_log)
+  programs.refmac5(structure.cif2mtz_mtz, structure.deposited_pdb, structure.refmac_mtz,
+    structure.refmac_pdb, structure.refmac_xml, 5, structure.refmac_log)
+  return programs.refmac_terminated_normally(structure.refmac_xml)
+
+# TODO: Refactor
+def choose_target(structures, resolution):
+  candidates = [s for s in structures if s.resolution == resolution]
+  while len(candidates) > 0:
+    candidate = random.choice(candidates)
+    utils.log("Assessing whether %s is a suitable target" % candidate.id)
+    target.make_dir()
+    if (is_validation_okay(candidate) and
+        is_refinement_okay(candidate)):
+      return candidate
+    shutil.rmtree(candidate.id)
+
+def prepare_models(structure):
+  # programs.cmodeltoseq(structure.deposited_pdb, structure.modeltoseq_seq, structure.modeltoseq_log)
+  structure.identify_representative_chains()
+  for chain in structure.chains:
+    if not chain.representative: continue
+    programs.extract_chain(structure.modeltoseq_seq, chain.id, chain.mrbump_seq)
+    programs.mrbump(chain.id, structure.id, chain.mrbump_seq, chain.mrbump_log)
+
+if __name__ == "__main__":
+  programs.ensure_executables_exist()
+  structures = structure.get_structures_from_pdb()
+  filter_by_resolution(structures, 1, 4)
+  res = resolution_with_least_structures(structures)
+  
+  # 2AJI is a good test from last run 3.2A, 363 residues and 6 models
+  # target = [s for s in structures if s.id == "2aji"][0]
+  
+  # 5TRU was a problem case where Phmmer returned thousands of results
+  target = [s for s in structures if s.id == "5tru"][0]
+  
+  print("Trying %s as a target" % target.id)
+  target.make_dir()
+  # print("Validation is okay:", is_validation_okay(target))
+  # print("Refinement is okay:", is_refinement_okay(target))
+  prepare_models(target)
