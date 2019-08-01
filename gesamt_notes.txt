@@ -1,0 +1,14 @@
+(3) gesamt --make-archive archive -pdb /data/pdb/pdb
+(4) gesamt --update-archive archive -pdb /data/pdb/pdb
+(5) gesamt {struct} -archive /data/gesamt/archive [options] [outputs]
+
+gesamt \
+file.pdb \ # Path to a PDB/mmCIF file (can be gzipped) can make subselections using CID or SCOP notation with -s or -d flags
+-archive /data/gesamt/archive \
+-min1=0.7 \ # Min proportion of query that should be matched
+-min2=0.7 \ # Min proportion of archive structure that should be matched
+-trim-size=X \ # min1 and min2 only get rid of structures where a match of length N cannot be achieved. X=1 gets rid of all cases where the ACTUAL match wasn't long enough. X=<1 get rid of some.
+-nthreads=auto \
+-o hits.txt \
+-a hits.fasta \
+-csv hits.csv
