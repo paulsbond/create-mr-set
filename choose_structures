@@ -2,9 +2,11 @@
 
 import argparse
 import csv
+import gzip
 import os
-import sys
+import random
 import urllib.request
+import xml.etree.ElementTree as ET
 
 def parse_args():
   parser = argparse.ArgumentParser(description=(
@@ -14,29 +16,31 @@ def parse_args():
     "Structures are also filtered by ensuring the 5 validation sliders "
     "meet threshold percentiles "
     "relative to other X-ray structures of similar resolution."))
-  parser.add_argument("validation-report-dir",
+  parser.add_argument("reports",
     help="Directory containing divided gzipped validation reports")
-  parser.add_argument("--max_structures", type=int, metavar="N", default=2000,
-    help="Maximum number of structures to find")
-  parser.add_argument("--res_min", type=float, metavar="X", default=1.0,
+  parser.add_argument("--max-structures", type=int, metavar="N", default=200,
+    help="Maximum number of structures to find in each bin")
+  parser.add_argument("--res-min", type=float, metavar="X", default=1.0,
     help="Minimum resolution (default: 1.0)")
-  parser.add_argument("--res_max", type=float, metavar="X", default=3.5,
+  parser.add_argument("--res-max", type=float, metavar="X", default=3.5,
     help="Maximum resolution (default: 3.5)")
-  parser.add_argument("--res_bins", type=int, metavar="N", default=5,
+  parser.add_argument("--res-bins", type=int, metavar="N", default=10,
     help="Number of resolution bins (default: 5)")
   parser.add_argument("--cluster-level", type=int, metavar="N", choices=[95,90,70,50,40,30], default=40,
     help="Sequence identity used for filtering similar chains (default: 40)")
   parser.add_argument("--rfree", type=int, metavar="N", default=50,
     help="Rfree percentile threshold (default: 50)")
-  parser.add_argument("--clashscore", type=int, metavar="N", default=25,
-    help="Clashscore (default: 25)")
-  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=25,
-    help="Percentage RSRZ outliers percentile threshold (default: 25)")
-  parser.add_argument("--rama-outliers", type=int, metavar="N", default=25,
-    help="Percentage Ramachandran outliers percentile threshold (default: 25)")
-  parser.add_argument("--rota-outliers", type=int, metavar="N", default=25,
-    help="Percentage rotamer outliers percentile threshold (default: 25)")
-  return parser.parse_args()
+  parser.add_argument("--clashscore", type=int, metavar="N", default=50,
+    help="Clashscore (default: 50)")
+  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=50,
+    help="Percentage RSRZ outliers percentile threshold (default: 50)")
+  parser.add_argument("--rama-outliers", type=int, metavar="N", default=50,
+    help="Percentage Ramachandran outliers percentile threshold (default: 50)")
+  parser.add_argument("--rota-outliers", type=int, metavar="N", default=50,
+    help="Percentage rotamer outliers percentile threshold (default: 50)")
+  args = parser.parse_args()
+  args.res_step = (args.res_max - args.res_min) / args.res_bins
+  return args
 
 class Structure:
   def __init__(self, row):
@@ -44,24 +48,21 @@ class Structure:
     self.resolution = float(row["resolution"])
     self.clusters = set()
 
-  def set_resolution_bin(self, args):
-    res_step = (args.res_max - args.res_min) / args.res_bins
-    for i in range(args.res_bins):
-      res_min = args.res_min + i * res_step
-      res_max = args.res_min + (i + 1) * res_step
-      yield Resolution_bin(res_min, res_max)
+  def validation_report_okay(self):
+    path = os.path.join(args.reports, self.id[1:3], self.id, "%s_validation.xml.gz" % self.id)
+    if not os.path.exists(path): return False
+    with gzip.open(path) as f:
+      content = f.read()
+    attribs = ET.fromstring(content).find("Entry").attrib
+    def key_okay(key, threshold):
+      return key in attribs and float(attribs[key]) >= threshold
+    return (key_okay("relative-percentile-DCC_Rfree", args.rfree) and
+            key_okay("relative-percentile-clashscore", args.clashscore) and
+            key_okay("relative-percentile-percent-RSRZ-outliers", args.rsrz_outliers) and
+            key_okay("relative-percentile-percent-rama-outliers", args.rama_outliers) and
+            key_okay("relative-percentile-percent-rota-outliers", args.rota_outliers))
 
-  def passes_validation_filter(self, args):
-    xml_path = os.path.join(args.validation_report_dir, self.id[1:3], self.id, "%s_validation.xml.gz" % self.id)
-    pass
-
-class Resolution_bin:
-  def __init__(self, res_min, res_max):
-    self.min = res_min
-    self.max = res_max
-    self.structures = []
-
-def xray_protein_structures(args):
+def xray_protein_structures():
   cluster_column = "clusterNumber%d" % args.cluster_level
   columns = [
     "experimentalTechnique",
@@ -75,6 +76,7 @@ def xray_protein_structures(args):
     url += "customReportColumns=%s&" % ",".join(columns)
     url += "format=csv&service=wsfile"
     urllib.request.urlretrieve(url, "pdb-chains.csv")
+  print("Reading structures...")
   structures = {}
   with open("pdb-chains.csv") as f:
     for row in csv.DictReader(f):
@@ -87,15 +89,36 @@ def xray_protein_structures(args):
       structures[structureId].clusters.add(row[cluster_column])
   return list(structures.values())
 
-def resolution_bin(args, resolution):
-
-
-def resolution_bins(args):
-
+def choose(structures):
+  random.shuffle(structures)
+  chosen = [[] for _ in range(args.res_bins)]
+  clusters = set()
+  for structure in structures:
+    if (structure.resolution < args.res_min or
+        structure.resolution >= args.res_max):
+      continue
+    i = int((structure.resolution - args.res_min) / args.res_step)
+    if len(chosen[i]) == args.max_structures:
+      continue
+    if any(c in clusters for c in structure.clusters):
+      continue
+    if structure.validation_report_okay():
+      chosen[i].append(structure)
+      clusters.update(structure.clusters)
+      print("Choosing %s at %.2fA (%d/%d in this bin)" % (
+        structure.id, structure.resolution, len(chosen[i]), args.max_structures))
+      if all(len(chosen[i]) == args.max_structures for i in range(len(chosen))):
+        return chosen
+  return chosen
 
 if __name__ == "__main__":
   args = parse_args()
-  structures = xray_protein_structures(args)
-  res_bins = resolution_bins(args)
-  for res_bin in res_bins:
-    print(res_bin.__dict__)
+  structures = xray_protein_structures()
+  chosen = choose(structures)
+  for i in range(len(chosen)):
+    min_res = args.res_min + i * args.res_step
+    max_res = args.res_min + (i + 1) * args.res_step
+    print("## %.2fA - %.2fA: %d" % (min_res, max_res, len(chosen[i])))
+  lines = ["%s\n" % s.id for i in range(len(chosen)) for s in chosen[i]]
+  with open("chosen_structures", "w") as f:
+    f.writelines(sorted(lines))
