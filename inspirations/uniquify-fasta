@@ -1,0 +1,34 @@
+#!/usr/bin/env ccp4-python
+
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import argparse
+import os
+import sys
+
+parser = argparse.ArgumentParser(description=(
+  "Combines identical sequences in a FASTA sequence file."))
+parser.add_argument("seqin", help="Input sequence file in FASTA format")
+parser.add_argument("seqout", help="Output sequence file in FASTA format")
+args = parser.parse_args()
+
+if not os.path.exists(args.seqin):
+  sys.exit("Cannot find file: " + args.seqin)
+
+chains = {}
+for record in SeqIO.parse(args.seqin, "fasta"):
+  sequence = str(record.seq)
+
+  chain = record.id
+  if "|" in chain: chain = chain.split("|")[0]
+  if ":" in chain: chain = chain.split(":")[1]
+
+  if sequence in chains:
+    chains[sequence] += "," + chain
+  else:
+    chains[sequence] = chain
+
+records = [SeqRecord(Seq(sequence), id=chains[sequence], description="") for sequence in chains]
+records.sort(key=lambda record: record.id)
+SeqIO.write(records, args.seqout, "fasta")
