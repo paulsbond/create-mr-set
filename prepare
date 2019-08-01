@@ -1,0 +1,224 @@
+#!/usr/bin/env ccp4-python
+
+import clipper
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib
+
+def run(executable, args=[], stdin=[], stdout=None):
+  pstdin = subprocess.PIPE if len(stdin) > 0 else None
+  pstdout = None if stdout is None else open(stdout, "w")
+  command = [executable] + args
+  p = subprocess.Popen(command, stdin=pstdin, stdout=pstdout)
+  if pstdin == subprocess.PIPE:
+    for line in stdin:
+      p.stdin.write(line + "\n")
+    p.stdin.close()
+  p.wait()
+
+def cad_mtz(pdb): return "%s/cad.mtz" % pdb
+def cif2mtz_mtz(pdb): return "%s/cif2mtz.mtz" % pdb
+def cphasematch_txt(pdb): return "%s/cphasematch.txt" % pdb
+def ctruncate_mtz(pdb): return "%s/ctruncate.mtz" % pdb
+def deposited_cif(pdb): return "%s/%s-sf.cif" % (pdb, pdb)
+def deposited_pdb(pdb): return "%s/%s.pdb" % (pdb, pdb)
+def freerflag_mtz(pdb): return "%s/freerflag.mtz" % pdb
+def joined_mtz(pdb): return "%s/joined.mtz" % pdb
+def metadata_json(pdb): return "%s/metadata.json" % pdb
+def model_pdb(pdb): return "%s/model.pdb" % pdb
+def model_refined_mmcif(pdb): return "%s/model_refined.mmcif" % pdb
+def model_refined_mtz(pdb): return "%s/model_refined.mtz" % pdb
+def model_refined_pdb(pdb): return "%s/model_refined.pdb" % pdb
+def no_unl_pdb(pdb): return "%s/no_unl.pdb" % pdb
+def no_symm_cif(pdb): return "%s/no_symm.cif" % pdb
+def reference_mmcif(pdb): return "%s/reference.mmcif" % pdb
+def reference_mtz(pdb): return "%s/reference.mtz" % pdb
+def reference_pdb(pdb): return "%s/reference.pdb" % pdb
+def sequence_fasta(pdb): return "%s/sequence.fasta" % pdb
+
+def download_deposited_cif(pdb):
+  if os.path.exists(deposited_cif(pdb)): return
+  url = "https://files.rcsb.org/download/%s-sf.cif" % pdb
+  print("Downloading %s" % url)
+  urllib.urlretrieve(url, deposited_cif(pdb))
+
+def download_deposited_pdb(pdb):
+  if os.path.exists(deposited_pdb(pdb)): return
+  url = "https://files.rcsb.org/download/%s.pdb" % pdb
+  print("Downloading %s" % url)
+  urllib.urlretrieve(url, deposited_pdb(pdb))
+
+def remove_symmetry_number(pdb):
+  shutil.copy(deposited_cif(pdb), no_symm_cif(pdb))
+  run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif(pdb)])
+
+def convert_to_mtz(pdb):
+  run("cif2mtz", [
+    "hklin", no_symm_cif(pdb),
+    "hklout", cif2mtz_mtz(pdb),
+  ], ["END"])
+
+def convert_intensities_to_amplitudes(pdb):
+  run("ctruncate", [
+    "-hklin", cif2mtz_mtz(pdb),
+    "-hklout", ctruncate_mtz(pdb),
+    "-seqin", sequence_fasta(pdb),
+    "-colin", "/*/*/[I,SIGI]",
+  ])
+
+def add_freeflag(pdb, hklin):
+  run("freerflag", [
+    "hklin", hklin,
+    "hklout", freerflag_mtz(pdb)
+  ], ["END"])
+
+def standardise_column_labels(pdb, f, sigf):
+  run("cad", [
+    "hklin1", freerflag_mtz(pdb),
+    "hklout", cad_mtz(pdb)
+  ], [
+    "LABI FILE_NUMBER 1 E1=FreeR_flag E2=%s E3=%s" % (f, sigf),
+    "XNAME FILE_NUMBER 1 ALL=",
+    "DNAME FILE_NUMBER 1 ALL=",
+    "LABO FILE_NUMBER 1 E1=FREE E2=FP E3=SIGFP",
+    "END",
+  ])
+
+def refine(pdb, xyzin, xyzout, hklout):
+  run("refmac5", [
+    "xyzin", xyzin,
+    "hklin", cad_mtz(pdb),
+    "xyzout", xyzout,
+    "hklout", hklout,
+  ], [
+    "PHOUT"
+    "END"
+  ])
+
+def remove_unl_residues(pdb):
+  shutil.copy(deposited_pdb(pdb), no_unl_pdb(pdb))
+  run("sed", ["-i", "/^HET.*UNL/d", no_unl_pdb(pdb)])
+  run("sed", ["-i", "/^ATOM.*UNL/d", no_unl_pdb(pdb)])
+  run("sed", ["-i", "/^REMARK 500.*UNL/d", no_unl_pdb(pdb)])
+
+def join_mtz_files(pdb):
+  run("cmtzjoin", [
+    "-mtzout", joined_mtz(pdb),
+    "-mtzin", cad_mtz(pdb),
+    "-colin", "FP,SIGFP",
+    "-colout", "FP,SIGFP",
+    "-mtzin", cad_mtz(pdb),
+    "-colin", "FREE",
+    "-colout", "FREE",
+    "-mtzin", reference_mtz(pdb),
+    "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB",
+    "-colout", "reference.HLA,reference.HLB,reference.HLC,reference.HLD",
+    "-mtzin", model_refined_mtz(pdb),
+    "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB",
+    "-colout", "model.HLA,model.HLB,model.HLC,model.HLD",
+  ])
+
+def cphasematch(pdb):
+  run("cphasematch", [
+    "-mtzin", joined_mtz(pdb),
+    "-colin-fo", "FP,SIGFP",
+    "-colin-hl-1", "reference.HLA,reference.HLB,reference.HLC,reference.HLD",
+    "-colin-hl-2", "model.HLA,model.HLB,model.HLC,model.HLD",
+  ], stdout=cphasematch_txt(pdb))
+
+def cphasematch_stat(pdb, stat):
+  log = open(cphasematch_txt(pdb)).readlines()
+  for i in range(len(log)):
+    if "Overall statistics:" in log[i]:
+      headers = log[i+1].split()
+      values = log[i+2].split()
+      for j in range(len(headers)):
+        if headers[j] == stat:
+          return float(values[j])
+
+def mtz_metadata(pdb):
+  f = clipper.CCP4MTZfile()
+  f.open_read(joined_mtz(pdb))
+  return {
+    "resolution": round(f.resolution().limit(), 2),
+    "spacegroup": f.spacegroup().symbol_hm(),
+    "cell": [
+      round(f.cell().a(), 2),
+      round(f.cell().b(), 2),
+      round(f.cell().c(), 2),
+      round(clipper.Util_rad2d(f.cell().alpha()), 1),
+      round(clipper.Util_rad2d(f.cell().beta()), 1),
+      round(clipper.Util_rad2d(f.cell().gamma()), 1)
+    ],
+  }
+
+def is_semet(pdb):
+  mmdb = clipper.MMDBfile()
+  mmdb.read_file(reference_pdb(pdb))
+  mol = clipper.MiniMol()
+  mmdb.import_minimol(mol)
+  for polymer in mol.model():
+    for monomer in polymer:
+      if str(monomer.type()) == "MET": return False
+      if str(monomer.type()) == "MSE": return True
+  return False
+
+def write_metadata(pdb):
+  metadata = {
+    "pdb_id": pdb,
+    "f_map_correlation": cphasematch_stat(pdb, "wFcorr"),
+    "mean_phase_error": cphasematch_stat(pdb, "w2<dphi>"),
+    "semet": is_semet(pdb)
+  }
+  metadata.update(mtz_metadata(pdb))
+  json.dump(metadata, open(metadata_json(pdb), "w"), indent=2, sort_keys=True)
+
+def remove(path):
+  try: os.remove(path)
+  except: pass
+
+def clean_up(pdb):
+  remove(cad_mtz(pdb))
+  remove(cif2mtz_mtz(pdb))
+  remove(cphasematch_txt(pdb))
+  remove(ctruncate_mtz(pdb))
+  remove(freerflag_mtz(pdb))
+  remove(model_refined_mmcif(pdb))
+  remove(model_refined_mtz(pdb))
+  remove(model_refined_pdb(pdb))
+  remove(no_symm_cif(pdb))
+  remove(no_unl_pdb(pdb))
+  remove(reference_mmcif(pdb))
+  remove(reference_mtz(pdb))
+
+def main():
+  pdbs = {line.strip() for line in open("datasets").readlines()}
+  if len(sys.argv) != 2 or sys.argv[1] not in pdbs:
+    sys.exit("Please provide one PDB ID from the test set")
+  pdb = sys.argv[1]
+  to_create = [metadata_json(pdb), joined_mtz(pdb), reference_pdb(pdb)]
+  if all(os.path.exists(path) for path in to_create): return
+  download_deposited_cif(pdb)
+  download_deposited_pdb(pdb)
+  remove_symmetry_number(pdb)
+  convert_to_mtz(pdb)
+  if pdb in ("3vxe","4ig4","4n2a","4xwn","5kyy"):
+    convert_intensities_to_amplitudes(pdb)
+    add_freeflag(pdb, ctruncate_mtz(pdb))
+    standardise_column_labels(pdb, "F", "SIGF")
+  else:
+    add_freeflag(pdb, cif2mtz_mtz(pdb))
+    standardise_column_labels(pdb, "FP", "SIGFP")
+  refine(pdb, model_pdb(pdb), model_refined_pdb(pdb), model_refined_mtz(pdb))
+  remove_unl_residues(pdb)
+  refine(pdb, no_unl_pdb(pdb), reference_pdb(pdb), reference_mtz(pdb))
+  join_mtz_files(pdb)
+  cphasematch(pdb)
+  write_metadata(pdb)
+  # clean_up(pdb)
+
+if __name__ == "__main__":
+  main()
