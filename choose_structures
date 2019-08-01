@@ -19,25 +19,25 @@ def parse_args():
   parser.add_argument("reports",
     help="Directory containing divided gzipped validation reports")
   parser.add_argument("--max-structures", type=int, metavar="N", default=200,
-    help="Maximum number of structures to find in each bin")
+    help="Maximum number of structures to find in each bin (default: 200)")
   parser.add_argument("--res-min", type=float, metavar="X", default=1.0,
     help="Minimum resolution (default: 1.0)")
   parser.add_argument("--res-max", type=float, metavar="X", default=3.5,
     help="Maximum resolution (default: 3.5)")
   parser.add_argument("--res-bins", type=int, metavar="N", default=10,
-    help="Number of resolution bins (default: 5)")
-  parser.add_argument("--cluster-level", type=int, metavar="N", choices=[95,90,70,50,40,30], default=40,
-    help="Sequence identity used for filtering similar chains (default: 40)")
+    help="Number of resolution bins (default: 10)")
+  parser.add_argument("--cluster-level", type=int, metavar="N", choices=[95,90,70,50,40,30], default=50,
+    help="Sequence identity used for filtering similar chains (default: 50)")
   parser.add_argument("--rfree", type=int, metavar="N", default=50,
     help="Rfree percentile threshold (default: 50)")
-  parser.add_argument("--clashscore", type=int, metavar="N", default=50,
-    help="Clashscore (default: 50)")
-  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=50,
-    help="Percentage RSRZ outliers percentile threshold (default: 50)")
-  parser.add_argument("--rama-outliers", type=int, metavar="N", default=50,
-    help="Percentage Ramachandran outliers percentile threshold (default: 50)")
-  parser.add_argument("--rota-outliers", type=int, metavar="N", default=50,
-    help="Percentage rotamer outliers percentile threshold (default: 50)")
+  parser.add_argument("--clashscore", type=int, metavar="N", default=40,
+    help="Clashscore (default: 40)")
+  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=40,
+    help="Percentage RSRZ outliers percentile threshold (default: 40)")
+  parser.add_argument("--rama-outliers", type=int, metavar="N", default=40,
+    help="Percentage Ramachandran outliers percentile threshold (default: 40)")
+  parser.add_argument("--rota-outliers", type=int, metavar="N", default=40,
+    help="Percentage rotamer outliers percentile threshold (default: 40)")
   args = parser.parse_args()
   args.res_step = (args.res_max - args.res_min) / args.res_bins
   return args
@@ -62,6 +62,13 @@ class Structure:
             key_okay("relative-percentile-percent-rama-outliers", args.rama_outliers) and
             key_okay("relative-percentile-percent-rota-outliers", args.rota_outliers))
 
+class Group:
+  def __init__(self, i):
+    self.min_res = args.res_min + i * args.res_step
+    self.max_res = args.res_min + (i + 1) * args.res_step
+    self.structures = []
+    self.chosen = []
+
 def xray_protein_structures():
   cluster_column = "clusterNumber%d" % args.cluster_level
   columns = [
@@ -71,7 +78,7 @@ def xray_protein_structures():
     "entityMacromoleculeType",
   ]
   if not os.path.exists("pdb-chains.csv"):
-    print("Downloading RCSB custom report of chains in the PDB")
+    print("Downloading RCSB custom report...")
     url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
     url += "customReportColumns=%s&" % ",".join(columns)
     url += "format=csv&service=wsfile"
@@ -89,36 +96,43 @@ def xray_protein_structures():
       structures[structureId].clusters.add(row[cluster_column])
   return list(structures.values())
 
-def choose(structures):
-  random.shuffle(structures)
-  chosen = [[] for _ in range(args.res_bins)]
-  clusters = set()
+def assign_groups(structures):
+  groups = [Group(i) for i in range(args.res_bins)]
   for structure in structures:
     if (structure.resolution < args.res_min or
         structure.resolution >= args.res_max):
       continue
     i = int((structure.resolution - args.res_min) / args.res_step)
-    if len(chosen[i]) == args.max_structures:
-      continue
-    if any(c in clusters for c in structure.clusters):
-      continue
-    if structure.validation_report_okay():
-      chosen[i].append(structure)
-      clusters.update(structure.clusters)
-      print("Choosing %s at %.2fA (%d/%d in this bin)" % (
-        structure.id, structure.resolution, len(chosen[i]), args.max_structures))
-      if all(len(chosen[i]) == args.max_structures for i in range(len(chosen))):
-        return chosen
-  return chosen
+    groups[i].structures.append(structure)
+  return groups
+
+def choose_structures(groups):
+  clusters = set()
+  groups.sort(key=lambda group: len(group.structures))
+  for group in groups:
+    random.shuffle(group.structures)
+    for structure in group.structures:
+      if any(c in clusters for c in structure.clusters):
+        continue
+      if structure.validation_report_okay():
+        group.chosen.append(structure)
+        clusters.update(structure.clusters)
+        print("Choosing %s at %.2fA (%d/%d)" % (
+          structure.id, structure.resolution, len(group.chosen), args.max_structures))
+        if len(group.chosen) == args.max_structures:
+          break
 
 if __name__ == "__main__":
   args = parse_args()
   structures = xray_protein_structures()
-  chosen = choose(structures)
-  for i in range(len(chosen)):
-    min_res = args.res_min + i * args.res_step
-    max_res = args.res_min + (i + 1) * args.res_step
-    print("## %.2fA - %.2fA: %d" % (min_res, max_res, len(chosen[i])))
-  lines = ["%s\n" % s.id for i in range(len(chosen)) for s in chosen[i]]
+  groups = assign_groups(structures)
+  choose_structures(groups)
+  groups.sort(key=lambda group: group.min_res)
+  print("| Min Res | Max Res | Structures | Chosen |")
+  print("|---------|---------|------------|--------|")
+  for group in groups:
+    print("| %7.2f | %7.2f | %10d | %6d |" % (
+      group.min_res, group.max_res, len(group.structures), len(group.chosen)))
+  ids = ["%s\n" % s.id for g in groups for s in g.structures]
   with open("chosen_structures", "w") as f:
-    f.writelines(sorted(lines))
+    f.writelines(sorted(ids))
