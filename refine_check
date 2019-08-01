@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+
+import os
+
+def finished(pdb):
+  metadata_json = os.path.join(pdb, "metadata.json")
+  reference_xml = os.path.join(pdb, "reference.xml")
+  return os.path.exists(metadata_json) and not os.path.exists(reference_xml)
+
+pdbs = [line.strip() for line in open("chosen_structures")]
+failed = [pdb for pdb in pdbs if not finished(pdb)]
+print(len(failed))
+# with open("refine_failed", "w") as f:
+#   for pdb in failed:
+#     f.write("%s\n" % pdb)
