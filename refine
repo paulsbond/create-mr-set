@@ -1,0 +1,216 @@
+#!/usr/bin/env ccp4-python
+
+from Bio import SeqIO
+import argparse
+import clipper
+import json
+import os
+import shutil
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+def parse_args():
+  parser = argparse.ArgumentParser(description="Refines a single structure using data deposited in the PDB.")
+  parser.add_argument("pdbid", help="PDB ID for the structure to be refined")
+  parser.add_argument("pdb", help="Directory containing divided gzipped PDB format coordinate files")
+  parser.add_argument("sf", help="Directory containing divided gzipped CIF format reflection data")
+  return parser.parse_args()
+
+def run(executable, args=[], stdin=[], stdout=None):
+  pstdin = subprocess.PIPE if len(stdin) > 0 else None
+  pstdout = None if stdout is None else open(stdout, "w")
+  command = [executable] + args
+  p = subprocess.Popen(command, stdin=pstdin, stdout=pstdout)
+  if pstdin == subprocess.PIPE:
+    for line in stdin:
+      p.stdin.write(line + "\n")
+    p.stdin.close()
+  p.wait()
+
+def cad_mtz(): return "%s/cad.mtz" % args.pdbid
+def cif2mtz_mtz(): return "%s/cif2mtz.mtz" % args.pdbid
+def cphasematch_txt(): return "%s/cphasematch.txt" % args.pdbid
+def ctruncate_mtz(): return "%s/ctruncate.mtz" % args.pdbid
+def deposited_cif(): return "%s/%s-sf.cif" % (args.pdbid, args.pdbid)
+def deposited_pdb(): return "%s/%s.pdb" % (args.pdbid, args.pdbid)
+def freerflag_mtz(): return "%s/freerflag.mtz" % args.pdbid
+def joined_mtz(): return "%s/joined.mtz" % args.pdbid
+def metadata_json(): return "%s/metadata.json" % args.pdbid
+def no_symm_cif(): return "%s/no_symm.cif" % args.pdbid
+def no_unl_pdb(): return "%s/no_unl.pdb" % args.pdbid
+def reference_mmcif(): return "%s/reference.mmcif" % args.pdbid
+def reference_mtz(): return "%s/reference.mtz" % args.pdbid
+def reference_pdb(): return "%s/reference.pdb" % args.pdbid
+def reference_xml(): return "%s/reference.xml" % args.pdbid
+def sequence_fasta(): return "%s/sequence.fasta" % args.pdbid
+
+def copy_deposited_cif():
+  gzipped = os.path.join(args.sf, args.pdbid[1:3], "r%ssf.ent.gz" % args.pdbid)
+  run("gunzip", ["-c", gzipped], stdout=deposited_cif())
+
+def copy_deposited_pdb():
+  gzipped = os.path.join(args.pdb, args.pdbid[1:3], "pdb%s.ent.gz" % args.pdbid)
+  run("gunzip", ["-c", gzipped], stdout=deposited_pdb())
+
+def extract_sequence():
+  records = SeqIO.parse(deposited_pdb(), "pdb-seqres")
+  SeqIO.write(records, sequence_fasta(), "fasta")
+
+def remove_symmetry_number():
+  shutil.copy(deposited_cif(), no_symm_cif())
+  run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
+
+def convert_to_mtz():
+  run("cif2mtz", [
+    "hklin", no_symm_cif(),
+    "hklout", cif2mtz_mtz(),
+  ], ["END"])
+
+def has_amplitudes():
+  f = clipper.CCP4MTZfile()
+  f.open_read(cif2mtz_mtz())
+  labels = {str(l).split()[0].split("/")[-1] for l in f.column_labels()}
+  return "FP" in labels and "SIGFP" in labels
+
+def convert_intensities_to_amplitudes():
+  run("ctruncate", [
+    "-hklin", cif2mtz_mtz(),
+    "-hklout", ctruncate_mtz(),
+    "-seqin", sequence_fasta(),
+    "-colin", "/*/*/[I,SIGI]",
+  ])
+
+def add_freeflag(hklin):
+  run("freerflag", [
+    "hklin", hklin,
+    "hklout", freerflag_mtz()
+  ], ["END"])
+
+def standardise_column_labels(f, sigf):
+  run("cad", [
+    "hklin1", freerflag_mtz(),
+    "hklout", cad_mtz()
+  ], [
+    "LABI FILE_NUMBER 1 E1=FreeR_flag E2=%s E3=%s" % (f, sigf),
+    "XNAME FILE_NUMBER 1 ALL=",
+    "DNAME FILE_NUMBER 1 ALL=",
+    "LABO FILE_NUMBER 1 E1=FREE E2=FP E3=SIGFP",
+    "END",
+  ])
+
+def remove_unl_residues():
+  shutil.copy(deposited_pdb(), no_unl_pdb())
+  run("sed", ["-i", "/^HET.*UNL/d", no_unl_pdb()])
+  run("sed", ["-i", "/^ATOM.*UNL/d", no_unl_pdb()])
+  run("sed", ["-i", "/^REMARK 500.*UNL/d", no_unl_pdb()])
+
+def refine_reference():
+  run("refmac5", [
+    "xyzin", no_unl_pdb(),
+    "hklin", cad_mtz(),
+    "xyzout", reference_pdb(),
+    "hklout", reference_mtz(),
+    "xmlout", reference_xml(),
+  ], [
+    "PHOUT"
+    "END"
+  ])
+
+def join_mtz_files():
+  run("cmtzjoin", [
+    "-mtzout", joined_mtz(),
+    "-mtzin", cad_mtz(),
+    "-colin", "FP,SIGFP",
+    "-colout", "FP,SIGFP",
+    "-mtzin", cad_mtz(),
+    "-colin", "FREE",
+    "-colout", "FREE",
+    "-mtzin", reference_mtz(),
+    "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB",
+    "-colout", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"
+  ])
+
+def mtz_metadata():
+  f = clipper.CCP4MTZfile()
+  f.open_read(joined_mtz())
+  return {
+    "resolution": round(f.resolution().limit(), 2),
+    "spacegroup": f.spacegroup().symbol_hm(),
+    "cell": [
+      round(f.cell().a(), 2),
+      round(f.cell().b(), 2),
+      round(f.cell().c(), 2),
+      round(clipper.Util_rad2d(f.cell().alpha()), 1),
+      round(clipper.Util_rad2d(f.cell().beta()), 1),
+      round(clipper.Util_rad2d(f.cell().gamma()), 1),
+    ],
+  }
+
+def reference_metadata():
+  root = ET.parse(reference_xml()).getroot()
+  rworks = list(root.iter("r_factor"))
+  rfrees = list(root.iter("r_free"))
+  return {
+    "reference_rwork": float(rworks[-1].text),
+    "reference_rfree": float(rfrees[-1].text),
+  }
+
+def is_semet():
+  mmdb = clipper.MMDBfile()
+  mmdb.read_file(reference_pdb())
+  mol = clipper.MiniMol()
+  mmdb.import_minimol(mol)
+  for polymer in mol.model():
+    for monomer in polymer:
+      if str(monomer.type()) == "MET": return False
+      if str(monomer.type()) == "MSE": return True
+  return False
+
+def write_metadata():
+  metadata = {
+    "pdb_id": args.pdbid,
+    "semet": is_semet()
+  }
+  metadata.update(mtz_metadata())
+  metadata.update(reference_metadata())
+  json.dump(metadata, open(metadata_json(), "w"), indent=2, sort_keys=True)
+
+def remove(path):
+  try: os.remove(path)
+  except: pass
+
+def clean_up():
+  remove(cad_mtz())
+  remove(cif2mtz_mtz())
+  remove(cphasematch_txt())
+  remove(ctruncate_mtz())
+  remove(deposited_cif())
+  remove(deposited_pdb())
+  remove(freerflag_mtz())
+  remove(no_symm_cif())
+  remove(no_unl_pdb())
+  remove(reference_mmcif())
+  remove(reference_mtz())
+  remove(reference_xml())
+
+if __name__ == "__main__":
+  args = parse_args()
+  run("mkdir", ["-p", args.pdbid])
+  copy_deposited_cif()
+  copy_deposited_pdb()
+  extract_sequence()
+  remove_symmetry_number()
+  convert_to_mtz()
+  if has_amplitudes():
+    add_freeflag(cif2mtz_mtz())
+    standardise_column_labels("FP", "SIGFP")
+  else:
+    convert_intensities_to_amplitudes()
+    add_freeflag(ctruncate_mtz())
+    standardise_column_labels("F", "SIGF")
+  remove_unl_residues()
+  refine_reference()
+  join_mtz_files()
+  write_metadata()
+  clean_up()
