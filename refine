@@ -67,27 +67,27 @@ def convert_to_mtz():
     "hklout", cif2mtz_mtz(),
   ], ["END"])
 
-def has_amplitudes():
-  f = clipper.CCP4MTZfile()
-  f.open_read(cif2mtz_mtz())
-  labels = {str(l).split()[0].split("/")[-1] for l in f.column_labels()}
-  return "FP" in labels and "SIGFP" in labels
-
-def convert_intensities_to_amplitudes():
-  run("ctruncate", [
+def ctruncate(columns):
+  args = [
     "-hklin", cif2mtz_mtz(),
     "-hklout", ctruncate_mtz(),
     "-seqin", sequence_fasta(),
-    "-colin", "/*/*/[I,SIGI]",
-  ])
+  ]
+  if len(columns) == 2:
+    args.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
+  else:
+    args.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
+  if columns[0][0] == "F":
+    args.append("-amplitudes")
+  run("ctruncate", args)
 
-def add_freeflag(hklin):
+def add_freeflag():
   run("freerflag", [
-    "hklin", hklin,
+    "hklin", ctruncate_mtz(),
     "hklout", freerflag_mtz()
   ], ["END"])
 
-def standardise_column_labels(f, sigf):
+def rename_column_labels(f, sigf):
   run("cad", [
     "hklin1", freerflag_mtz(),
     "hklout", cad_mtz()
@@ -98,6 +98,27 @@ def standardise_column_labels(f, sigf):
     "LABO FILE_NUMBER 1 E1=FREE E2=FP E3=SIGFP",
     "END",
   ])
+
+def standardise_mtz():
+  f = clipper.CCP4MTZfile()
+  f.open_read(cif2mtz_mtz())
+  labels = [str(l).split()[0].split("/")[-1] for l in f.column_labels()]
+  anomalous = False
+  if all(l in labels for l in ["FP", "SIGFP"]):
+    ctruncate(["FP", "SIGFP"])
+  elif all(l in labels for l in ["I", "SIGI"]):
+    ctruncate(["I", "SIGI"])
+  elif all(l in labels for l in ["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"]):
+    ctruncate(["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"])
+    anomalous = True
+  elif all(l in labels for l in ["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"]):
+    ctruncate(["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"])
+    anomalous = True
+  else:
+    sys.exit("Can't find columns to convert to F,SIGF: [%s]" % " ".join(labels))
+  add_freeflag()
+  if anomalous: rename_column_labels("FMEAN", "SIGFMEAN")
+  else: rename_column_labels("F", "SIGF")
 
 def remove_unl_residues():
   shutil.copy(deposited_pdb(), no_unl_pdb())
@@ -157,14 +178,11 @@ def reference_metadata():
   }
 
 def is_semet():
-  mmdb = clipper.MMDBfile()
-  mmdb.read_file(reference_pdb())
-  mol = clipper.MiniMol()
-  mmdb.import_minimol(mol)
-  for polymer in mol.model():
-    for monomer in polymer:
-      if str(monomer.type()) == "MET": return False
-      if str(monomer.type()) == "MSE": return True
+  with open(reference_pdb()) as f:
+    for line in f:
+      if line[:6] == "ATOM  " or line[:6] == "HETATM":
+        if line[17:20] == "MET": return False
+        if line[17:20] == "MSE": return True
   return False
 
 def write_metadata():
@@ -202,13 +220,7 @@ if __name__ == "__main__":
   extract_sequence()
   remove_symmetry_number()
   convert_to_mtz()
-  if has_amplitudes():
-    add_freeflag(cif2mtz_mtz())
-    standardise_column_labels("FP", "SIGFP")
-  else:
-    convert_intensities_to_amplitudes()
-    add_freeflag(ctruncate_mtz())
-    standardise_column_labels("F", "SIGF")
+  standardise_mtz()
   remove_unl_residues()
   refine_reference()
   join_mtz_files()

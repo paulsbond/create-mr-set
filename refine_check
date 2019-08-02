@@ -1,15 +1,32 @@
-#!/usr/bin/python3
+#!/usr/bin/env ccp4-python
 
 import os
+import re
+import clipper
 
 def finished(pdb):
   metadata_json = os.path.join(pdb, "metadata.json")
   reference_xml = os.path.join(pdb, "reference.xml")
   return os.path.exists(metadata_json) and not os.path.exists(reference_xml)
 
+def failure_reason(pdb):
+  with open("%s.err" % pdb) as f:
+    stderr = f.read()
+  errors = [
+    "gzip: /data/pdb/pdb",
+    "cif2mtz:  No symmetry information in keywords or file!",
+    "Missing column, crystal or dataset: /*/*/I", # TODO: Remove
+    "Can't find columns to convert to F,SIGF",
+    "Refmac:  New ligand has been encountered",
+    "Refmac:  Problem with coordinate file",
+    "Refmac:  Fatal error",
+  ]
+  for error in errors:
+    if error in stderr: return error
+  return "Unknown reason"
+
 pdbs = [line.strip() for line in open("chosen_structures")]
 failed = [pdb for pdb in pdbs if not finished(pdb)]
-print(len(failed))
-# with open("refine_failed", "w") as f:
-#   for pdb in failed:
-#     f.write("%s\n" % pdb)
+with open("refine_failed", "w") as f:
+  for pdb in failed:
+    f.write("%s %s\n" % (pdb, failure_reason(pdb)))
