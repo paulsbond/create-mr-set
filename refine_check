@@ -2,7 +2,6 @@
 
 import os
 import re
-import clipper
 
 def finished(pdb):
   metadata_json = os.path.join(pdb, "metadata.json")
@@ -15,7 +14,6 @@ def failure_reason(pdb):
   errors = [
     "gzip: /data/pdb/pdb",
     "cif2mtz:  No symmetry information in keywords or file!",
-    "Missing column, crystal or dataset: /*/*/I", # TODO: Remove
     "Can't find columns to convert to F,SIGF",
     "Refmac:  New ligand has been encountered",
     "Refmac:  Problem with coordinate file",
