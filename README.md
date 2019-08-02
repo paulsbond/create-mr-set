@@ -32,3 +32,7 @@ Finally, run `refine_clean` to delete files
 that are no longer needed for the next steps.
 
 ## 3. Extract unique protein sequences
+
+## 4. Find structural homologues
+
+## 5. Molecular replacement (or just gesamt depending on output from 4)
