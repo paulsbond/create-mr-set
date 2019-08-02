@@ -1,0 +1,17 @@
+def remove(path):
+  try: os.remove(path)
+  except: pass
+
+def clean_up():
+  remove(cad_mtz())
+  remove(cif2mtz_mtz())
+  remove(cphasematch_txt())
+  remove(ctruncate_mtz())
+  remove(deposited_cif())
+  remove(deposited_pdb())
+  remove(freerflag_mtz())
+  remove(no_symm_cif())
+  remove(no_unl_pdb())
+  remove(reference_mmcif())
+  remove(reference_mtz())
+  remove(reference_xml())

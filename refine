@@ -12,9 +12,10 @@ import xml.etree.ElementTree as ET
 
 def parse_args():
   parser = argparse.ArgumentParser(description="Refines a single structure using data deposited in the PDB.")
-  parser.add_argument("pdbid", help="PDB ID for the structure to be refined")
-  parser.add_argument("pdb", help="Directory containing divided gzipped PDB format coordinate files")
-  parser.add_argument("sf", help="Directory containing divided gzipped CIF format reflection data")
+  parser.add_argument("id", help="PDB ID for the structure")
+  parser.add_argument("pdb", help="PDB format coordinate file (gzipped)")
+  parser.add_argument("sf", help="CIF format reflection data file (gzipped)")
+  parser.add_argument("seq", help="FASTA format sequence file")
   return parser.parse_args()
 
 def run(executable, args=[], stdin=[], stdout=None):
@@ -28,34 +29,33 @@ def run(executable, args=[], stdin=[], stdout=None):
     p.stdin.close()
   p.wait()
 
-def cad_mtz(): return "%s/cad.mtz" % args.pdbid
-def cif2mtz_mtz(): return "%s/cif2mtz.mtz" % args.pdbid
-def cphasematch_txt(): return "%s/cphasematch.txt" % args.pdbid
-def ctruncate_mtz(): return "%s/ctruncate.mtz" % args.pdbid
-def deposited_cif(): return "%s/%s-sf.cif" % (args.pdbid, args.pdbid)
-def deposited_pdb(): return "%s/%s.pdb" % (args.pdbid, args.pdbid)
-def freerflag_mtz(): return "%s/freerflag.mtz" % args.pdbid
-def joined_mtz(): return "%s/joined.mtz" % args.pdbid
-def metadata_json(): return "%s/metadata.json" % args.pdbid
-def no_symm_cif(): return "%s/no_symm.cif" % args.pdbid
-def no_unl_pdb(): return "%s/no_unl.pdb" % args.pdbid
-def reference_mmcif(): return "%s/reference.mmcif" % args.pdbid
-def reference_mtz(): return "%s/reference.mtz" % args.pdbid
-def reference_pdb(): return "%s/reference.pdb" % args.pdbid
-def reference_xml(): return "%s/reference.xml" % args.pdbid
-def sequence_fasta(): return "%s/sequence.fasta" % args.pdbid
+def cad_mtz(): return "%s/cad.mtz" % args.id
+def cif2mtz_mtz(): return "%s/cif2mtz.mtz" % args.id
+def cphasematch_txt(): return "%s/cphasematch.txt" % args.id
+def ctruncate_mtz(): return "%s/ctruncate.mtz" % args.id
+def deposited_cif(): return "%s/%s-sf.cif" % (args.id, args.id)
+def deposited_pdb(): return "%s/%s.pdb" % (args.id, args.id)
+def freerflag_mtz(): return "%s/freerflag.mtz" % args.id
+def joined_mtz(): return "%s/joined.mtz" % args.id
+def metadata_json(): return "%s/metadata.json" % args.id
+def no_symm_cif(): return "%s/no_symm.cif" % args.id
+def no_unl_pdb(): return "%s/no_unl.pdb" % args.id
+def reference_mmcif(): return "%s/reference.mmcif" % args.id
+def reference_mtz(): return "%s/reference.mtz" % args.id
+def reference_pdb(): return "%s/reference.pdb" % args.id
+def reference_xml(): return "%s/reference.xml" % args.id
 
-def copy_deposited_cif():
-  gzipped = os.path.join(args.sf, args.pdbid[1:3], "r%ssf.ent.gz" % args.pdbid)
-  run("gunzip", ["-c", gzipped], stdout=deposited_cif())
+def check_input():
+  if not os.path.exists(args.pdb):
+    sys.exit("Can't find input file: %s" % args.pdb)
+  if not os.path.exists(args.sf):
+    sys.exit("Can't find input file: %s" % args.sf)
+  if not os.path.exists(args.seq):
+    sys.exit("Can't find input file: %s" % args.seq)
 
-def copy_deposited_pdb():
-  gzipped = os.path.join(args.pdb, args.pdbid[1:3], "pdb%s.ent.gz" % args.pdbid)
-  run("gunzip", ["-c", gzipped], stdout=deposited_pdb())
-
-def extract_sequence():
-  records = SeqIO.parse(deposited_pdb(), "pdb-seqres")
-  SeqIO.write(records, sequence_fasta(), "fasta")
+def unzip_input():
+  run("gunzip", ["-c", args.pdb], stdout=deposited_pdb())
+  run("gunzip", ["-c", args.sf], stdout=deposited_cif())
 
 def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
@@ -68,18 +68,18 @@ def convert_to_mtz():
   ], ["END"])
 
 def ctruncate(columns):
-  args = [
+  arguments = [
     "-hklin", cif2mtz_mtz(),
     "-hklout", ctruncate_mtz(),
-    "-seqin", sequence_fasta(),
+    "-seqin", args.seq,
   ]
   if len(columns) == 2:
-    args.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
+    arguments.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
   else:
-    args.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
+    arguments.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
   if columns[0][0] == "F":
-    args.append("-amplitudes")
-  run("ctruncate", args)
+    arguments.append("-amplitudes")
+  run("ctruncate", arguments)
 
 def add_freeflag():
   run("freerflag", [
@@ -187,37 +187,18 @@ def is_semet():
 
 def write_metadata():
   metadata = {
-    "pdb_id": args.pdbid,
+    "pdb_id": args.id,
     "semet": is_semet()
   }
   metadata.update(mtz_metadata())
   metadata.update(reference_metadata())
   json.dump(metadata, open(metadata_json(), "w"), indent=2, sort_keys=True)
 
-def remove(path):
-  try: os.remove(path)
-  except: pass
-
-def clean_up():
-  remove(cad_mtz())
-  remove(cif2mtz_mtz())
-  remove(cphasematch_txt())
-  remove(ctruncate_mtz())
-  remove(deposited_cif())
-  remove(deposited_pdb())
-  remove(freerflag_mtz())
-  remove(no_symm_cif())
-  remove(no_unl_pdb())
-  remove(reference_mmcif())
-  remove(reference_mtz())
-  remove(reference_xml())
-
 if __name__ == "__main__":
   args = parse_args()
-  run("mkdir", ["-p", args.pdbid])
-  copy_deposited_cif()
-  copy_deposited_pdb()
-  extract_sequence()
+  run("mkdir", ["-p", args.id])
+  check_input()
+  unzip_input()
   remove_symmetry_number()
   convert_to_mtz()
   standardise_mtz()
@@ -225,4 +206,3 @@ if __name__ == "__main__":
   refine_reference()
   join_mtz_files()
   write_metadata()
-  clean_up()
