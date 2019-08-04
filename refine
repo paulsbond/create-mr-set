@@ -1,6 +1,5 @@
 #!/usr/bin/env ccp4-python
 
-from Bio import SeqIO
 import argparse
 import clipper
 import json
