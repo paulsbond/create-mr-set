@@ -1,0 +1,11 @@
+#!/usr/bin/env ccp4-python
+
+import argparse
+
+def parse_args():
+  parser = argparse.ArgumentParser(description="Extracts unique protein sequences")
+  parser.add_argument("id", help="PDB ID for the structure")
+  parser.add_argument("seq", help="FASTA format sequence file")
+  return parser.parse_args()
+
+
