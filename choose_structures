@@ -97,7 +97,7 @@ def choose_structures(groups):
 
 if __name__ == "__main__":
   args = parse_args()
-  structures = shared.get_structures()
+  structures = shared.get_structure_list()
   groups = assign_groups(structures)
   choose_structures(groups)
   groups.sort(key=lambda group: group.min_res)

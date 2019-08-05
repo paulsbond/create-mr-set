@@ -20,7 +20,7 @@ class Chain:
     self.cluster40 = row["clusterNumber40"]
     self.cluster30 = row["clusterNumber30"]
 
-def get_structures():
+def get_structure_dict():
   columns = [
     "experimentalTechnique",
     "resolution",
@@ -49,9 +49,7 @@ def get_structures():
       if structureId not in structures:
         structures[structureId] = Structure(row)
       structures[structureId].chains.append(Chain(row))
-  return list(structures.values())
+  return structures
 
-def get_structure(structure_id):
-  for structure in get_structures():
-    if structure.id == structure_id:
-      return structure
+def get_structure_list():
+  return list(get_structure_dict().values())
