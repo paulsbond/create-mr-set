@@ -2,6 +2,11 @@
 
 Data for PhD paper 3 test set
 
+## Requirements
+
+CCP4 7.0.076
+Python 3.6.8 with biopython-1.74
+
 ## 1. Choose structures
 
 Ran `choose_structures /data/pdb/validation_reports` with default parameters.
@@ -32,6 +37,11 @@ Finally, run `refine_clean` to delete files
 that are no longer needed for the next steps.
 
 ## 3. Extract unique protein sequences
+
+Run the script `extract_protein_sequences`,
+which creates `protein.fasta` files in each directory listed in `refine_passed`.
+The file contains unique annotated protein sequences with 20+ amino acids.
+The ID of each chain is a comma separated list of IDs with that sequence.
 
 ## 4. Find structural homologues
 
