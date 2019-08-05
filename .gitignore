@@ -5,4 +5,4 @@
 pdb-chains.csv
 refine_failed
 refine_passed
-sequences
+sequences/*.fasta
