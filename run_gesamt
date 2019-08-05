@@ -1,0 +1,28 @@
+#!/usr/bin/python3
+
+from Bio import SeqIO
+import os
+import shared
+import uuid
+
+def unique_chains(pdb):
+  path = os.path.join(pdb, "protein.fasta")
+  for record in SeqIO.parse(path, "fasta"):
+    yield record.id.split(",")[0]
+
+def run_gesamt(pdb, chain):
+  reference_pdb = os.path.join(pdb, "reference.pdb")
+  hits_path = os.path.join(pdb, "chain%s_gesamt.txt" % chain)
+  if not os.path.exists(hits_path):
+    shared.run("gesamt", [
+      reference_pdb, "-s", chain,
+      "-archive", "/data/gesamt/archive",
+      "-nthreads=auto",
+      "-o", hits_path,
+    ])
+
+if __name__ == "__main__":
+  pdbs = [line.strip() for line in open("refine_passed")]
+  for pdb in pdbs[:5]:
+    for chain in unique_chains(pdb):
+      run_gesamt(pdb, chain)
