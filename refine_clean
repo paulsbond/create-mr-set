@@ -4,7 +4,7 @@ import os
 import shutil
 
 def remove_tree(path):
-  try: shutil.rmtree(pdb)
+  try: shutil.rmtree(path)
   except: pass
 
 def remove(path):
@@ -28,7 +28,7 @@ for pdb in passed:
   remove("%s.log" % pdb)
   remove("%s.err" % pdb)
 
-failed = [line.strip() for line in open("refine_failed")]
+failed = [line.split()[0] for line in open("refine_failed")]
 for pdb in failed:
   remove_tree(pdb)
   remove("%s.log" % pdb)
