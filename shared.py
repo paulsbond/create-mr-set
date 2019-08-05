@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
 
 import csv
-import urllib.request
 import os
+import subprocess
+import urllib.request
+
+def run(executable, args=[], stdin=[], stdout=None):
+  pstdin = subprocess.PIPE if len(stdin) > 0 else None
+  pstdout = None if stdout is None else open(stdout, "w")
+  command = [executable] + args
+  p = subprocess.Popen(command, stdin=pstdin, stdout=pstdout, encoding="utf8")
+  if pstdin == subprocess.PIPE:
+    for line in stdin:
+      p.stdin.write(line + "\n")
+    p.stdin.close()
+  p.wait()
 
 class Structure:
   def __init__(self, row):
