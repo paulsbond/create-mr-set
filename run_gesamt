@@ -23,6 +23,6 @@ def run_gesamt(pdb, chain):
 
 if __name__ == "__main__":
   pdbs = [line.strip() for line in open("refine_passed")]
-  for pdb in pdbs[:5]:
+  for pdb in pdbs:
     for chain in unique_chains(pdb):
       run_gesamt(pdb, chain)
