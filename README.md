@@ -45,4 +45,48 @@ The ID of each chain is a comma separated list of IDs with that sequence.
 
 ## 4. Find structural homologues
 
-## 5. Molecular replacement (or just gesamt depending on output from 4)
+The script `find_homologues` (rename from run_gesamt)
+will run GESAMT to search for structural homologues.
+It needs the path to a GESAMT archive, which can be created using:
+
+```bash
+gesamt --make-archive
+```
+
+This script loops through the structures in `refine_passed` one at a time
+but will parallelise each search over the threads available on the machine.
+It creates files called `chain?_gesamt.txt`
+where `?` is the chain ID for each representative chain in `protein.fasta`.
+
+## 5. Choose models
+
+The `choose_models` script looks at the hits in the `chain?_gesamt.txt` files
+and chooses which ones should be made into models.
+It creates a folder called `models` in each directory
+and a folder within that for each model with the format
+`{query chain}_{hit pdb}{hit chain}`,
+e.g. `A_3ecrB` means that chain B of 3ECR
+has been chosen as an MR model for chain A.
+
+## 6. Prepare models
+
+Use gesamt to superpose hit chain over query chain and write out an alignment.  
+Use phaser.sculptor to trim the hit chain using the gesamt alignment.  
+
+## 7. Molecular replacement
+
+Run phaser.  
+Get composition from reference.pdb atom counts  
+Get number of copies from protein.fasta record ids  
+
+keywords:
+
+```bash
+COMPOSITION ATOM <TYPE> NUMBER <NUM>
+```
+
+python:
+
+```python
+addCOMP_ATOM(str <TYPE>, float <NUM>)
+```
