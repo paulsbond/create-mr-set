@@ -3,12 +3,16 @@
 from Bio import SeqIO
 import os
 import shared
+import shutil
 import uuid
 
 class Hit:
-  def __init__(self, pdb, chain):
+  def __init__(self, pdb, chain, qscore, rmsd, seqid):
     self.pdb = pdb
     self.chain = chain
+    self.qscore = qscore
+    self.rmsd = rmsd
+    self.seqid = seqid
     self.cluster95 = None
     if pdb.upper() in structures:
       for chain in structures[pdb.upper()].chains:
@@ -21,25 +25,19 @@ def unique_chains(pdb):
   for record in SeqIO.parse(path, "fasta"):
     yield record.id.split(",")[0]
 
-def gesamt_hits(pdb, chain):
-  reference_pdb = os.path.join(pdb, "reference.pdb")
+def reasonable_gesamt_hits(pdb, chain):
   hits_path = os.path.join(pdb, "chain%s_gesamt.txt" % chain)
-  if not os.path.exists(hits_path):
-    shared.run("gesamt", [
-      reference_pdb, "-s", chain,
-      "-archive", "/data/gesamt/archive",
-      "-nthreads=auto",
-      "-o", hits_path,
-    ])
   with open(hits_path) as hits_file:
     for line in hits_file:
       if line[0] == "#": continue
       split = line.split()
+      hit_pdb = split[1].lower()
+      hit_chain = split[2]
       qscore = float(split[3])
       rmsd = float(split[4])
       seqid = float(split[5])
       if qscore > 0.1 and rmsd < 2 and seqid < 0.95:
-        yield Hit(split[1].lower(), split[2])
+        yield Hit(hit_pdb, hit_chain, qscore, rmsd, seqid)
 
 def alignment_stats(hit1, hit2):
   tmp_path = "tmp%s" % uuid.uuid4()
@@ -70,32 +68,44 @@ def should_choose(hit, chosen_hits):
   if hit.cluster95 is None: return False
   for chosen_hit in reversed(chosen_hits):
     if hit.cluster95 == chosen_hit.cluster95: return False
-  max_qscore = -1
-  min_rmsd = 1000
-  max_seqid = -1
+  best_stats = {
+    "qscore": 0,
+    "rmsd": 1000,
+    "seqid": 0,
+  }
   for chosen_hit in reversed(chosen_hits):
     stats = alignment_stats(hit, chosen_hit)
-    print(stats)
-    # if stats["seqid"] is None:
-    #   or stats["seqid"] > 0.95: return False
+    if stats["qscore"] is not None:
+      best_stats["qscore"] = max(stats["qscore"], best_stats["qscore"])
+    if stats["rmsd"] is not None:
+      if stats["rmsd"] < 1.5: return False
+      best_stats["rmsd"] = min(stats["rmsd"], best_stats["rmsd"])
+    if stats["seqid"] is not None:
+      if stats["seqid"] > 0.95: return False
+      best_stats["seqid"] = max(stats["seqid"], best_stats["seqid"])
+  from pprint import pprint
+  pprint(hit.__dict__)
+  pprint(best_stats)
   return True
 
-def mkdir(path):
-  try: os.mkdir(path)
-  except: pass
+def reset_models_directory(pdb):
+  path = os.path.join(pdb, "models")
+  if os.path.exists(path): shutil.rmtree(path)
+  os.mkdir(path)
 
 if __name__ == "__main__":
   structures = shared.get_structure_dict()
   pdbs = [line.strip() for line in open("refine_passed")]
-  pdbs = ["1bm2"]
+  pdbs = ["3ccv"] # TODO: remove
   for pdb in pdbs:
-    mkdir(os.path.join(pdb, "models"))
+    reset_models_directory(pdb)
     for chain in unique_chains(pdb):
+      if chain != "V": continue # TODO: remove
       chosen_hits = []
-      for hit in gesamt_hits(pdb, chain):
+      for hit in reasonable_gesamt_hits(pdb, chain):
         if should_choose(hit, chosen_hits):
           chosen_hits.append(hit)
-          mkdir(os.path.join(pdb, "models", "%s_%s%s" % (chain, hit.pdb, hit.chain)))
-          print("%s%s CHOSEN" % (hit.pdb, hit.chain))
-        else:
-          print("%s%s rejected" % (hit.pdb, hit.chain))
+          os.mkdir(os.path.join(pdb, "models", "%s_%s%s" % (chain, hit.pdb, hit.chain)))
+        #   print("%s%s CHOSEN" % (hit.pdb, hit.chain))
+        # else:
+        #   print("%s%s rejected" % (hit.pdb, hit.chain))
