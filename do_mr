@@ -23,29 +23,36 @@ def parse_args():
   args.dir = os.path.join(args.pdb, "models", args.model)
   return args
 
-def gesamt(pdb1, chain1, pdb2, chain2):
-  path1 = os.path.join(args.pdbs, pdb1[1:3], "pdb%s.ent.gz" % pdb1)
-  path2 = os.path.join(args.pdbs, pdb2[1:3], "pdb%s.ent.gz" % pdb2)
+def target_gz(): return os.path.join(args.pdbs, args.pdb[1:3], "pdb%s.ent.gz" % args.pdb)
+def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
+def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
+def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
+def gesamt_fasta(): return os.path.join(args.dir, "gesamt.fasta")
+def alignment_fasta(): return os.path.join(args.dir, "alignment.fasta")
+def sculptor_log(): return os.path.join(args.dir, "sculptor.log")
+def sculptor_pdb(): return os.path.join(args.dir, "sculptor.pdb")
+def phaser_log(): return os.path.join(args.dir, "phaser.log")
+
+def gesamt():
   shared.run("gesamt", [
-    path1, "-s", chain1,
-    path2, "-s", chain2,
-    "-o", os.path.join(args.dir, "gesamt.pdb"),
-    "-a", os.path.join(args.dir, "gesamt.fasta"),
-  ], stdout=os.path.join(args.dir, "gesamt.log"))
+    target_gz(), "-s", args.chain,
+    model_gz(), "-s", args.model_chain,
+    "-o", gesamt_pdb(),
+    "-a", gesamt_fasta(),
+  ], stdout=gesamt_log())
 
 def prepare_alignment():
-  records = list(SeqIO.parse(os.path.join(args.dir, "gesamt.fasta"), "fasta"))
+  records = list(SeqIO.parse(gesamt_fasta(), "fasta"))
   records[0].id = "%s%s" % (args.pdb, args.chain)
   records[1].id = "%s%s" % (args.model_pdb, args.model_chain)
   records[0].seq = Seq.Seq(str(records[0].seq).upper())
   records[1].seq = Seq.Seq(str(records[1].seq).upper())
-  SeqIO.write(records, os.path.join(args.dir, "alignment.fasta"), "fasta")
+  SeqIO.write(records, alignment_fasta(), "fasta")
 
 def sculptor():
-  src = os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
   tmp1 = os.path.join(args.dir, "tmp1.pdb")
   tmp2 = os.path.join(args.dir, "tmp2.pdb")
-  shared.run("gunzip", ["-c", src], stdout=tmp1)
+  shared.run("gunzip", ["-c", model_gz()], stdout=tmp1)
   shared.run("pdbcur", [
     "xyzin", tmp1,
     "xyzout", tmp2,
@@ -59,7 +66,7 @@ def sculptor():
     "    file_name = %s" % tmp2,
     "  }",
     "  alignment {",
-    "    file_name = %s" % os.path.join(args.dir, "alignment.fasta"),
+    "    file_name = %s" % alignment_fasta(),
     "    target_index = 1",
     "  }",
     "}",
@@ -67,12 +74,10 @@ def sculptor():
     "  folder = %s" % args.dir,
     "  root = 'sculptor'",
     "}",
-  ], stdout=os.path.join(args.dir, "sculptor.log"))
+  ], stdout=sculptor_log())
   os.remove(tmp1)
   os.remove(tmp2)
-  src = os.path.join(args.dir, "sculptor_tmp2.pdb")
-  dst = os.path.join(args.dir, "sculptor.pdb")
-  os.rename(src, dst)
+  os.rename(os.path.join(args.dir, "sculptor_tmp2.pdb"), sculptor_pdb())
 
 def n_copies():
   path = os.path.join(args.pdb, "protein.fasta")
@@ -101,22 +106,21 @@ def identity():
         return float(line[19:])
 
 def phaser():
-  sculpted = os.path.join(args.dir, "sculptor.pdb")
   keywords = [
     "MODE MR_AUTO",
     "HKLIN %s" % os.path.join(args.pdb, "joined.mtz"),
-    "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculpted, identity()),
+    "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculptor_pdb(), identity()),
     "SEARCH ENSEMBLE model NUM %d" % n_copies(),
     "ROOT %s" % os.path.join(args.dir, "phaser"),
   ]
   counts = atom_counts()
   for atom in counts:
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
-  shared.run("phaser", stdin=keywords, stdout=os.path.join(args.dir, "phaser.log"))
+  shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
 if __name__ == "__main__":
   args = parse_args()
-  gesamt(args.pdb, args.chain, args.model_pdb, args.model_chain)
+  gesamt()
   prepare_alignment()
   sculptor()
   phaser()
