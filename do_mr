@@ -50,20 +50,12 @@ def prepare_alignment():
   SeqIO.write(records, alignment_fasta(), "fasta")
 
 def sculptor():
-  tmp1 = os.path.join(args.dir, "tmp1.pdb")
-  tmp2 = os.path.join(args.dir, "tmp2.pdb")
-  shared.run("gunzip", ["-c", model_gz()], stdout=tmp1)
-  shared.run("pdbcur", [
-    "xyzin", tmp1,
-    "xyzout", tmp2,
-  ], [
-    "lvchain /1/%s" % args.model_chain,
-    "mostprob",
-  ])
   shared.run("phaser.sculptor", ["--stdin"], [
     "input {",
     "  model {"
-    "    file_name = %s" % tmp2,
+    "    file_name = %s" % model_gz(),
+    "    selection = chain %s" % args.model_chain,
+    "    remove_alternate_conformations = True",
     "  }",
     "  alignment {",
     "    file_name = %s" % alignment_fasta(),
@@ -75,9 +67,8 @@ def sculptor():
     "  root = 'sculptor'",
     "}",
   ], stdout=sculptor_log())
-  os.remove(tmp1)
-  os.remove(tmp2)
-  os.rename(os.path.join(args.dir, "sculptor_tmp2.pdb"), sculptor_pdb())
+  output_pdb = os.path.join(args.dir, "sculptor_pdb%s.ent.pdb" % args.model_pdb)
+  os.rename(output_pdb, sculptor_pdb())
 
 def n_copies():
   path = os.path.join(args.pdb, "protein.fasta")
