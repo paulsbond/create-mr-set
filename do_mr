@@ -28,7 +28,7 @@ def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.g
 def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
 def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
 def gesamt_fasta(): return os.path.join(args.dir, "gesamt.fasta")
-def alignment_fasta(): return os.path.join(args.dir, "alignment.fasta")
+def sculptor_fasta(): return os.path.join(args.dir, "sculptor.fasta")
 def sculptor_log(): return os.path.join(args.dir, "sculptor.log")
 def sculptor_pdb(): return os.path.join(args.dir, "sculptor.pdb")
 def phaser_log(): return os.path.join(args.dir, "phaser.log")
@@ -41,15 +41,13 @@ def gesamt():
     "-a", gesamt_fasta(),
   ], stdout=gesamt_log())
 
-def prepare_alignment():
+def sculptor():
   records = list(SeqIO.parse(gesamt_fasta(), "fasta"))
   records[0].id = "%s%s" % (args.pdb, args.chain)
   records[1].id = "%s%s" % (args.model_pdb, args.model_chain)
   records[0].seq = Seq.Seq(str(records[0].seq).upper())
   records[1].seq = Seq.Seq(str(records[1].seq).upper())
-  SeqIO.write(records, alignment_fasta(), "fasta")
-
-def sculptor():
+  SeqIO.write(records, sculptor_fasta(), "fasta")
   shared.run("phaser.sculptor", ["--stdin"], [
     "input {",
     "  model {"
@@ -58,7 +56,7 @@ def sculptor():
     "    remove_alternate_conformations = True",
     "  }",
     "  alignment {",
-    "    file_name = %s" % alignment_fasta(),
+    "    file_name = %s" % sculptor_fasta(),
     "    target_index = 1",
     "  }",
     "}",
@@ -109,9 +107,10 @@ def phaser():
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
+
+
 if __name__ == "__main__":
   args = parse_args()
   gesamt()
-  prepare_alignment()
   sculptor()
   phaser()
