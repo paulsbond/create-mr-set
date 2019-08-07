@@ -23,15 +23,18 @@ def parse_args():
   args.dir = os.path.join(args.pdb, "models", args.model)
   return args
 
-def target_gz(): return os.path.join(args.pdbs, args.pdb[1:3], "pdb%s.ent.gz" % args.pdb)
-def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
-def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
-def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
 def gesamt_fasta(): return os.path.join(args.dir, "gesamt.fasta")
+def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
+def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
+def joined_mtz(): return os.path.join(args.pdb, "joined.mtz")
+def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
+def phaser_log(): return os.path.join(args.dir, "phaser.log")
+def protein_fasta(): return os.path.join(args.pdb, "protein.fasta")
+def reference_pdb(): return os.path.join(args.pdb, "reference.pdb")
 def sculptor_fasta(): return os.path.join(args.dir, "sculptor.fasta")
 def sculptor_log(): return os.path.join(args.dir, "sculptor.log")
 def sculptor_pdb(): return os.path.join(args.dir, "sculptor.pdb")
-def phaser_log(): return os.path.join(args.dir, "phaser.log")
+def target_gz(): return os.path.join(args.pdbs, args.pdb[1:3], "pdb%s.ent.gz" % args.pdb)
 
 def gesamt():
   shared.run("gesamt", [
@@ -69,14 +72,12 @@ def sculptor():
   os.rename(output_pdb, sculptor_pdb())
 
 def n_copies():
-  path = os.path.join(args.pdb, "protein.fasta")
-  for record in SeqIO.parse(path, "fasta"):
+  for record in SeqIO.parse(protein_fasta(), "fasta"):
     if record.id[0] == args.chain:
       return len(record.id.split(","))
 
 def atom_counts():
-  path = os.path.join(args.pdb, "reference.pdb")
-  model = gemmi.read_structure(path)[0]
+  model = gemmi.read_structure(reference_pdb())[0]
   counts = {}
   for chain in model:
     for residue in chain:
@@ -97,7 +98,7 @@ def identity():
 def phaser():
   keywords = [
     "MODE MR_AUTO",
-    "HKLIN %s" % os.path.join(args.pdb, "joined.mtz"),
+    "HKLIN %s" % joined_mtz(),
     "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculptor_pdb(), identity()),
     "SEARCH ENSEMBLE model NUM %d" % n_copies(),
     "ROOT %s" % os.path.join(args.dir, "phaser"),
@@ -106,8 +107,6 @@ def phaser():
   for atom in counts:
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
-
-
 
 if __name__ == "__main__":
   args = parse_args()
