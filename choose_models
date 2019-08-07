@@ -101,9 +101,11 @@ if __name__ == "__main__":
   structures = shared.get_structure_dict()
   reset_models_directory()
   for chain in unique_chains():
+    print("## Choosing hits for %s:%s" % (args.pdb, chain))
     chosen_hits = []
     for hit in possible_gesamt_hits(chain):
       if should_choose(hit, chosen_hits):
+        print(hit.__dict__)
         chosen_hits.append(hit)
         os.mkdir(os.path.join(args.pdb, "models", "%s_%s%s" % (chain, hit.pdb, hit.chain)))
         if len(chosen_hits) == args.max_models:
