@@ -29,8 +29,13 @@ def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
 def joined_mtz(): return os.path.join(args.pdb, "joined.mtz")
 def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
 def phaser_log(): return os.path.join(args.dir, "phaser.log")
+def phaser_pdb(): return os.path.join(args.dir, "phaser.1.pdb")
 def protein_fasta(): return os.path.join(args.pdb, "protein.fasta")
 def reference_pdb(): return os.path.join(args.pdb, "reference.pdb")
+def refmac_log(): return os.path.join(args.dir, "refmac.log")
+def refmac_mtz(): return os.path.join(args.dir, "refmac.mtz")
+def refmac_pdb(): return os.path.join(args.dir, "refmac.pdb")
+def refmac_xml(): return os.path.join(args.dir, "refmac.xml")
 def sculptor_fasta(): return os.path.join(args.dir, "sculptor.fasta")
 def sculptor_log(): return os.path.join(args.dir, "sculptor.log")
 def sculptor_pdb(): return os.path.join(args.dir, "sculptor.pdb")
@@ -108,8 +113,21 @@ def phaser():
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
+def refmac():
+  shared.run("refmac5", [
+    "HKLIN", joined_mtz(),
+    "XYZIN", phaser_pdb(),
+    "HKLOUT", refmac_mtz(),
+    "XYZOUT", refmac_pdb(),
+    "XMLOUT", refmac_xml(),
+  ], [
+    "NCYCLES 10",
+    "END"
+  ], stdout=refmac_log())
+
 if __name__ == "__main__":
   args = parse_args()
   gesamt()
   sculptor()
   phaser()
+  refmac()
