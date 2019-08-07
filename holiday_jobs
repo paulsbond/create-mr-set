@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+./find_homologues
+./make_choose_models_commands
+run-parallel choose_models_commands
+./make_do_mr_commands
+run-parallel do_mr_commands
