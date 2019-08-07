@@ -38,7 +38,7 @@ def prepare_alignment():
   records[0].id = "%s%s" % (args.pdb, args.chain)
   records[1].id = "%s%s" % (args.model_pdb, args.model_chain)
   records[0].seq = Seq.Seq(str(records[0].seq).upper())
-  records[0].seq = Seq.Seq(str(records[1].seq).upper())
+  records[1].seq = Seq.Seq(str(records[1].seq).upper())
   SeqIO.write(records, os.path.join(args.dir, "alignment.fasta"), "fasta")
 
 def sculptor():
@@ -67,19 +67,11 @@ def sculptor():
     "  folder = %s" % args.dir,
     "  root = 'sculptor'",
     "}",
-    "macromolecule {",
-    "  pruning {",
-    "    use = schwarzenbacher",
-    "  }",
-    "  bfactor {",
-    "    use = asa",
-    "  }",
-    "}",
-  ])
+  ], stdout=os.path.join(args.dir, "sculptor.log"))
   os.remove(tmp1)
   os.remove(tmp2)
   src = os.path.join(args.dir, "sculptor_tmp2.pdb")
-  dst = os.path.join(args.dir, "sculpted.pdb")
+  dst = os.path.join(args.dir, "sculptor.pdb")
   os.rename(src, dst)
 
 def n_copies():
@@ -109,21 +101,22 @@ def identity():
         return float(line[19:])
 
 def phaser():
-  sculpted = os.path.join(args.dir, "sculpted.pdb")
+  sculpted = os.path.join(args.dir, "sculptor.pdb")
   keywords = [
     "MODE MR_AUTO",
     "HKLIN %s" % os.path.join(args.pdb, "joined.mtz"),
     "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculpted, identity()),
-    "SEARCH ENSEMBLE toxd NUM %d" % atom_counts(),
+    "SEARCH ENSEMBLE model NUM %d" % n_copies(),
     "ROOT %s" % os.path.join(args.dir, "phaser"),
   ]
   counts = atom_counts()
   for atom in counts:
-    keywords.append("COMPOSITION ATOM %s NUMBER %d" % (atom, counts[atom]))
-  shared.run("phaser", stdin=keywords)
+    keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
+  shared.run("phaser", stdin=keywords, stdout=os.path.join(args.dir, "phaser.log"))
 
 if __name__ == "__main__":
   args = parse_args()
   gesamt(args.pdb, args.chain, args.model_pdb, args.model_chain)
   prepare_alignment()
   sculptor()
+  phaser()
