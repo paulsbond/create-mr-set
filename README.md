@@ -68,25 +68,17 @@ and a folder within that for each model with the format
 e.g. `A_3ecrB` means that chain B of 3ECR
 has been chosen as an MR model for chain A.
 
-## 6. Prepare models
-
-Use gesamt to superpose hit chain over query chain and write out an alignment.  
-Use phaser.sculptor to trim the hit chain using the gesamt alignment.  
+There is a `choose_models_check` script that can be run after
+and will list PDBs for which no models were chosen.
 
 ## 7. Molecular replacement
 
-Run phaser.  
-Get composition from reference.pdb atom counts  
-Get number of copies from protein.fasta record ids  
+Script `do_mr` needs to be run once for each model.
+It runs the following steps:
 
-keywords:
+1. gesamt to superpose hit chain over query chain and write out an alignment.  
+2. phaser.sculptor to trim the hit chain using the gesamt alignment.  
+3. phaser to do MR with the sculpted model.
+4. refmac to refine the top solution from phaser.
 
-```bash
-COMPOSITION ATOM <TYPE> NUMBER <NUM>
-```
-
-python:
-
-```python
-addCOMP_ATOM(str <TYPE>, float <NUM>)
-```
+## 8. Extract metadata
