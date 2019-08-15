@@ -1,8 +1,8 @@
 ????
 ????.err
 ????.log
+*_failed
+*_passed
 *.pyc
 pdb-chains.csv
-refine_failed
-refine_passed
 sequences/*.fasta
