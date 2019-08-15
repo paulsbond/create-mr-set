@@ -107,6 +107,10 @@ def phaser():
     "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculptor_pdb(), identity()),
     "SEARCH ENSEMBLE model NUM %d" % n_copies(),
     "ROOT %s" % os.path.join(args.dir, "phaser"),
+    "PURGE ROT NUMBER 1",
+    "PURGE TRA NUMBER 1",
+    "PURGE RNP NUMBER 1",
+    "JOBS 1",
   ]
   counts = atom_counts()
   for atom in counts:
