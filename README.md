@@ -73,7 +73,7 @@ and will list PDBs for which no models were chosen.
 
 ## 7. Molecular replacement
 
-Script `do_mr` needs to be run once for each model.
+Script `mr` needs to be run once for each model.
 It runs the following steps:
 
 1. gesamt to superpose hit chain over query chain and write out an alignment.  

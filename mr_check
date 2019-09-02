@@ -1,0 +1,20 @@
+#!/usr/bin/env ccp4-python
+
+import os
+
+def get_failure(pdb, model):
+  model_dir = os.path.join(pdb, "models", model)
+  if not os.path.exists(os.path.join(model_dir, "phaser.1.pdb")):
+    return "Phaser did not produce a PDB file"
+  if not os.path.exists(os.path.join(model_dir, "refmac.pdb")):
+    return "REFMAC did not produce a PDB file"
+
+pdbs = [line.strip() for line in open("refine_passed")]
+with open("mr_failed", "w") as failed, open("mr_passed", "w") as passed:
+  for pdb in pdbs:
+    for model in os.listdir(os.path.join(pdb, "models")):
+      failure = get_failure(pdb, model)
+      if failure is None:
+        passed.write("%s %s\n" % (pdb, model))
+      else:
+        failed.write("%s %s %s\n" % (pdb, model, failure))
