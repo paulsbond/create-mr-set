@@ -1,6 +1,6 @@
-# paper3
+# Paper: Test Set
 
-Data for PhD paper 3 test set
+Data for PhD test set paper.
 
 ## Requirements
 
