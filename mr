@@ -43,8 +43,8 @@ def target_gz(): return os.path.join(args.pdbs, args.pdb[1:3], "pdb%s.ent.gz" % 
 
 def gesamt():
   shared.run("gesamt", [
-    target_gz(), "-s", args.chain,
-    model_gz(), "-s", args.model_chain,
+    target_gz(), "-s", "//%s" % args.chain,
+    model_gz(), "-s", "//%s" % args.model_chain,
     "-o", gesamt_pdb(),
     "-a", gesamt_fasta(),
   ], stdout=gesamt_log())
