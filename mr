@@ -3,8 +3,11 @@
 from Bio import SeqIO, Seq
 import argparse
 import gemmi
+import json
 import os
+import re
 import shared
+import xml.etree.ElementTree as ET
 
 def parse_args():
   parser = argparse.ArgumentParser(description=(
@@ -23,10 +26,16 @@ def parse_args():
   args.dir = os.path.join(args.pdb, "models", args.model)
   return args
 
+def cmtzjoin_log(): return os.path.join(args.dir, "cmtzjoin.log")
+def cmtzjoin_mtz(): return os.path.join(args.dir, "cmtzjoin.mtz")
+def cphasematch_log(): return os.path.join(args.dir, "cphasematch.log")
+def csymmatch_log(): return os.path.join(args.dir, "csymmatch.log")
+def csymmatch_pdb(): return os.path.join(args.dir, "csymmatch.pdb")
 def gesamt_fasta(): return os.path.join(args.dir, "gesamt.fasta")
 def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
 def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
 def joined_mtz(): return os.path.join(args.pdb, "joined.mtz")
+def metadata_json(): return os.path.join(args.dir, "metadata.json")
 def model_gz(): return os.path.join(args.pdbs, args.model_pdb[1:3], "pdb%s.ent.gz" % args.model_pdb)
 def phaser_log(): return os.path.join(args.dir, "phaser.log")
 def phaser_pdb(): return os.path.join(args.dir, "phaser.1.pdb")
@@ -117,21 +126,143 @@ def phaser():
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
+def csymmatch():
+  shared.run("csymmatch", [
+    "-pdbin-ref", reference_pdb(),
+    "-pdbin", phaser_pdb(),
+    "-pdbout", csymmatch_pdb(),
+    "-origin-hand-work",
+  ], stdout=csymmatch_log())
+
 def refmac():
   shared.run("refmac5", [
     "HKLIN", joined_mtz(),
-    "XYZIN", phaser_pdb(),
+    "XYZIN", csymmatch_pdb(),
     "HKLOUT", refmac_mtz(),
     "XYZOUT", refmac_pdb(),
     "XMLOUT", refmac_xml(),
   ], [
     "NCYCLES 10",
+    "PHOUT",
     "END"
   ], stdout=refmac_log())
 
+def cmtzjoin():
+  shared.run("cmtzjoin", [
+    "-mtzout", cmtzjoin_mtz(),
+    "-mtzin", joined_mtz(), "-colin", "FP,SIGFP", "-colout", "FP,SIGFP",
+    "-mtzin", joined_mtz(), "-colin", "FREE", "-colout", "FREE",
+    "-mtzin", joined_mtz(), "-colin", "reference.HLA,reference.HLB,reference.HLC,reference.HLD", "-colout", "reference.HLA,reference.HLB,reference.HLC,reference.HLD",
+    "-mtzin", refmac_mtz(), "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "-colout", "model.HLA,model.HLB,model.HLC,model.HLD",
+  ], stdout=cmtzjoin_log())
+
+def cphasematch():
+  shared.run("cphasematch", [
+    "-mtzin", cmtzjoin_mtz(),
+    "-colin-fo", "FP,SIGFP",
+    "-colin-hl-1", "model.HLA,model.HLB,model.HLC,model.HLD",
+    "-colin-hl-2", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"
+  ], stdout=cphasematch_log())
+
+def metadata():
+  metadata = {
+    "target_pdb": args.pdb,
+    "target_chain": args.chain,
+    "target_copies": n_copies(),
+    "model_pdb": args.model_pdb,
+    "model_chain": args.model_chain,
+    "directory": args.dir,
+  }
+  # GESAMT
+  with open(gesamt_log()) as f: log = f.read()
+  if "DISSIMILAR and cannot be reasonably aligned" in log:
+    metadata["error"] = "GESAMT: Query and target are dissimilar"
+    return metadata
+  if not os.path.exists(gesamt_fasta()):
+    metadata["error"] = "GESAMT: No sequence file produced"
+    return metadata
+  match = re.search(r" Q-score          : (\d+\.\d+)", log)
+  metadata["gesamt_q_score"] = float(match.group(1))
+  match = re.search(r" RMSD             : (\d+\.\d+)", log)
+  metadata["gesamt_rmsd"] = float(match.group(1))
+  match = re.search(r" Aligned residues : (\d+)", log)
+  metadata["gesamt_aligned_residues"] = int(match.group(1))
+  match = re.search(r" Sequence Id:     : (\d+\.\d+)", log)
+  metadata["gesamt_sequence_id"] = float(match.group(1))
+  # SCULPTOR
+  if not os.path.exists(sculptor_fasta()):
+    metadata["error"] = "SCULPTOR: No input sequence file"
+    return metadata
+  if not os.path.exists(sculptor_pdb()):
+    metadata["error"] = "SCULPTOR: No coordinate file produced"
+    return metadata
+  with open(sculptor_pdb()) as f:
+    has_atoms = False
+    for line in f:
+      if line[:6] == "ATOM  ":
+        has_atoms = True
+        break
+  if not has_atoms:
+    metadata["error"] = "SCULPTOR: No atoms in coordinate file"
+    return metadata
+  # PHASER
+  with open(phaser_log()) as f: log = f.read()
+  if not os.path.exists(phaser_pdb()):
+    if not "EXIT STATUS:" in log:
+      metadata["error"] = "PHASER: Terminated early"
+    elif "EXIT STATUS: SUCCESS" in log:
+      metadata["error"] = "PHASER: No solution found"
+    elif "INPUT ERROR: No scattering in coordinate file" in log:
+      metadata["error"] = "PHASER: No scattering in input coordinates"
+    elif "INPUT ERROR: Structure Factors of Models" in log:
+      metadata["error"] = "PHASER: Bad ensemble given as input"
+    else:
+      metadata["error"] = "PHASER: No coordinates produced"
+    return metadata
+  with open(phaser_pdb()) as pdb_file:
+    for line in pdb_file:
+      if line[:26] == "REMARK Log-Likelihood Gain":
+        metadata["phaser_llg"] = float(line.split()[-1])
+        break
+  # CSYMMATCH
+  if not os.path.exists(csymmatch_pdb()):
+    metadata["error"] = "CSYMMATCH: No coordinates produced"
+    return metadata
+  # REFMAC
+  if not os.path.exists(refmac_pdb()):
+    metadata["error"] = "REFMAC: No coordinates produced"
+    return metadata
+  if not os.path.exists(refmac_mtz()):
+    metadata["error"] = "REFMAC: No reflection data produced"
+    return metadata
+  if not os.path.exists(refmac_xml()):
+    metadata["error"] = "REFMAC: No XML file produced"
+    return metadata
+  root = ET.parse(refmac_xml()).getroot()
+  rworks = list(root.iter("r_factor"))
+  rfrees = list(root.iter("r_free"))
+  metadata["refmac_rfree_final"] = float(rfrees[-1].text)
+  metadata["refmac_rfree_initial"] = float(rfrees[0].text)
+  metadata["refmac_rwork_final"] = float(rworks[-1].text)
+  metadata["refmac_rwork_initial"] = float(rworks[0].text)
+  # CMTZJOIN
+  if not os.path.exists(cmtzjoin_mtz()):
+    metadata["error"] = "CMTZJOIN: No reflection data produced"
+    return metadata
+  # CPHASEMATCH
+  with open(cphasematch_log()) as f: log = f.read()
+  match = re.search(r"Overall statistics:\n.*\n(.*)\n", log)
+  metadata["mean_phase_error"] = float(match.group(1).split()[5])
+  metadata["f_map_correlation"] = float(match.group(1).split()[6])
+  return metadata
+
 if __name__ == "__main__":
   args = parse_args()
-  gesamt()
-  sculptor()
-  phaser()
+  # gesamt()
+  # sculptor()
+  # phaser()
+  csymmatch()
   refmac()
+  cmtzjoin()
+  cphasematch()
+  json.dump(metadata(), open(metadata_json(), "w"), indent=2, sort_keys=True)
