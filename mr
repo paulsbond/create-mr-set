@@ -29,8 +29,6 @@ def parse_args():
 def cmtzjoin_log(): return os.path.join(args.dir, "cmtzjoin.log")
 def cmtzjoin_mtz(): return os.path.join(args.dir, "cmtzjoin.mtz")
 def cphasematch_log(): return os.path.join(args.dir, "cphasematch.log")
-def csymmatch_log(): return os.path.join(args.dir, "csymmatch.log")
-def csymmatch_pdb(): return os.path.join(args.dir, "csymmatch.pdb")
 def gesamt_fasta(): return os.path.join(args.dir, "gesamt.fasta")
 def gesamt_log(): return os.path.join(args.dir, "gesamt.log")
 def gesamt_pdb(): return os.path.join(args.dir, "gesamt.pdb")
@@ -126,18 +124,10 @@ def phaser():
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
-def csymmatch():
-  shared.run("csymmatch", [
-    "-pdbin-ref", reference_pdb(),
-    "-pdbin", phaser_pdb(),
-    "-pdbout", csymmatch_pdb(),
-    "-origin-hand-work",
-  ], stdout=csymmatch_log())
-
 def refmac():
   shared.run("refmac5", [
     "HKLIN", joined_mtz(),
-    "XYZIN", csymmatch_pdb(),
+    "XYZIN", phaser_pdb(),
     "HKLOUT", refmac_mtz(),
     "XYZOUT", refmac_pdb(),
     "XMLOUT", refmac_xml(),
@@ -224,10 +214,6 @@ def metadata():
       if line[:26] == "REMARK Log-Likelihood Gain":
         metadata["phaser_llg"] = float(line.split()[-1])
         break
-  # CSYMMATCH
-  if not os.path.exists(csymmatch_pdb()):
-    metadata["error"] = "CSYMMATCH: No coordinates produced"
-    return metadata
   # REFMAC
   if not os.path.exists(refmac_pdb()):
     metadata["error"] = "REFMAC: No coordinates produced"
@@ -261,7 +247,6 @@ if __name__ == "__main__":
   # gesamt()
   # sculptor()
   # phaser()
-  csymmatch()
   refmac()
   cmtzjoin()
   cphasematch()
