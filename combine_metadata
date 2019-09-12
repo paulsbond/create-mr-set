@@ -1,0 +1,30 @@
+#!/usr/bin/python3
+
+import json
+import os
+
+metadata = {}
+
+commands = [c for c in open("mr_commands")]
+for command in commands:
+  split = command.split()
+
+  pdb = split[1]
+  if pdb not in metadata:
+    path = os.path.join(pdb, "metadata.json")
+    metadata[pdb] = json.load(open(path))
+    del metadata[pdb]["pdb_id"]
+    metadata[pdb]["models"] = {}
+
+  model = split[2]
+  path = os.path.join(pdb, "models", model, "metadata.json")
+  metadata[pdb]["models"][model] = json.load(open(path))
+  metadata[pdb]["models"][model]["copies"] = metadata[pdb]["models"][model]["target_copies"]
+  del metadata[pdb]["models"][model]["directory"]
+  del metadata[pdb]["models"][model]["model_chain"]
+  del metadata[pdb]["models"][model]["model_pdb"]
+  del metadata[pdb]["models"][model]["target_chain"]
+  del metadata[pdb]["models"][model]["target_copies"]
+  del metadata[pdb]["models"][model]["target_pdb"]
+
+json.dump(metadata, open("metadata.json", "w"), separators=(",", ":"), sort_keys=True)
