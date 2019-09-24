@@ -1,9 +1,0 @@
-#!/usr/bin/python3
-
-import os
-
-pdbs = [line.strip() for line in open("refine_passed")]
-with open("mr_commands", "w") as f:
-  for pdb in pdbs:
-    for model in os.listdir(os.path.join(pdb, "models")):
-      f.write("./mr %s %s /data/pdb/pdb\n" % (pdb, model))

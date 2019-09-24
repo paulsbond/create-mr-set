@@ -1,6 +1,0 @@
-#!/usr/bin/python3
-
-pdbs = [line.strip() for line in open("refine_passed")]
-with open("choose_models_commands", "w") as f:
-  for pdb in pdbs:
-    f.write("./choose_models %s /data/pdb/pdb\n" % pdb)
