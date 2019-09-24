@@ -10,7 +10,7 @@ Python 3.6.8 with biopython-1.74
 ## 1. Choose structures
 
 Ran `choose_structures /data/pdb/validation_reports` with default parameters.
-This chose 2000 targets and wrote them to `chosen_targets`.
+This chooses 2000 targets and wrote them to `chosen_targets`.
 The targets don't share chains with 50% sequence idenity.
 They are distributed evenly in 10 bins between 1.0 and 3.5 A resolution.
 The PDB validation sliders were checked

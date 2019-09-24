@@ -20,6 +20,7 @@ class Structure:
   def __init__(self, row):
     self.id = row["structureId"].lower()
     self.resolution = float(row["resolution"])
+    self.rwork = float(row["rWork"])
     self.chains = []
 
 class Chain:
@@ -36,6 +37,7 @@ def get_structure_dict():
   columns = [
     "experimentalTechnique",
     "resolution",
+    "rWork",
     "entityMacromoleculeType",
     "clusterNumber95",
     "clusterNumber90",
