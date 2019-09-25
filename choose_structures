@@ -29,14 +29,14 @@ def parse_args():
     help="Sequence identity used for filtering similar chains (default: 50)")
   parser.add_argument("--rfree", type=int, metavar="N", default=50,
     help="Rfree percentile threshold (default: 50)")
-  parser.add_argument("--clashscore", type=int, metavar="N", default=45,
-    help="Clashscore percentile threshold (default: 45)")
-  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=45,
-    help="Percentage RSRZ outliers percentile threshold (default: 45)")
-  parser.add_argument("--rama-outliers", type=int, metavar="N", default=45,
-    help="Percentage Ramachandran outliers percentile threshold (default: 45)")
-  parser.add_argument("--rota-outliers", type=int, metavar="N", default=45,
-    help="Percentage rotamer outliers percentile threshold (default: 45)")
+  parser.add_argument("--clashscore", type=int, metavar="N", default=40,
+    help="Clashscore percentile threshold (default: 40)")
+  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=40,
+    help="Percentage RSRZ outliers percentile threshold (default: 40)")
+  parser.add_argument("--rama-outliers", type=int, metavar="N", default=40,
+    help="Percentage Ramachandran outliers percentile threshold (default: 40)")
+  parser.add_argument("--rota-outliers", type=int, metavar="N", default=40,
+    help="Percentage rotamer outliers percentile threshold (default: 40)")
   args = parser.parse_args()
   args.res_step = (args.res_max - args.res_min) / args.res_bins
   return args
