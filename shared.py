@@ -57,7 +57,7 @@ def get_structure_dict():
     urllib.request.urlretrieve(url, path)
   print("Reading structures from pdb-chains.csv ...")
   structures = {}
-  with open("pdb-chains.csv") as f:
+  with open(path) as f:
     for row in csv.DictReader(f):
       if any(row[column] == "" for column in columns): continue
       if row["experimentalTechnique"] != "X-RAY DIFFRACTION": continue
