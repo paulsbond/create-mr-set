@@ -20,9 +20,9 @@ def parse_args():
   parser.add_argument("--max-structures", type=int, metavar="N", default=200,
     help="Maximum number of structures to find in each bin (default: 200)")
   parser.add_argument("--res-min", type=float, metavar="X", default=1.0,
-    help="Minimum resolution (default: 1.0)")
+    help="Minimum resolution (inclusive) (default: 1.0)")
   parser.add_argument("--res-max", type=float, metavar="X", default=3.5,
-    help="Maximum resolution (default: 3.5)")
+    help="Maximum resolution (exclusive) (default: 3.5)")
   parser.add_argument("--res-bins", type=int, metavar="N", default=10,
     help="Number of resolution bins (default: 10)")
   parser.add_argument("--cluster-level", type=int, metavar="N", choices=[95,90,70,50,40,30], default=50,
@@ -101,10 +101,10 @@ if __name__ == "__main__":
   groups = assign_groups(structures)
   choose_structures(groups)
   groups.sort(key=lambda group: group.min_res)
-  print("| Min Res | Max Res | Structures | Chosen |")
-  print("|---------|---------|------------|--------|")
+  print("| Min Res (inclusive) | Max Res (exclusive) | Structures | Chosen |")
+  print("|---------------------|---------------------|------------|--------|")
   for group in groups:
-    print("| %7.2f | %7.2f | %10d | %6d |" % (
+    print("| %19.2f | %19.2f | %10d | %6d |" % (
       group.min_res, group.max_res, len(group.structures), len(group.chosen)))
   ids = sorted("%s\n" % s.id for g in groups for s in g.chosen)
   with open("chosen_structures", "w") as f:
