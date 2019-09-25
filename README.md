@@ -9,14 +9,10 @@ Python 3.6.8 with biopython-1.74
 
 ## 1. Choose structures
 
-Ran `choose_structures /data/pdb/validation_reports` with default parameters.
-This chooses 2000 targets and wrote them to `chosen_targets`.
-The targets don't share chains with 50% sequence idenity.
-They are distributed evenly in 10 bins between 1.0 and 3.5 A resolution.
-The PDB validation sliders were checked
-relative to similar resolution structures.
-R-free had to be at least the 50th percentile
-and the other 4 sliders had to be in at least the 45th percentile.
+Running `choose_structures` chooses PDB structures for targets,
+ensuring they are spread over a range of resolutions,
+do not contain similar chains and meet certain validation criteria.
+Chosen structures are written to a file called `chosen_structures`.
 
 ## 2. Refine deposited structure
 
