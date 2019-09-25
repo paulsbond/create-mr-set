@@ -2,6 +2,7 @@
 
 import argparse
 import gzip
+import json
 import os
 import random
 import shared
@@ -77,6 +78,17 @@ def assign_groups(structures):
     groups[i].structures.append(structure)
   return groups
 
+def write_metadata(structure):
+  directory = os.path.join("data", structure.id)
+  os.mkdir(directory)
+  path = os.path.join(directory, "metadata.json")
+  metadata = {
+    "reported_resolution": structure.resolution,
+    "reported_rwork": structure.rwork,
+    "reported_rfree": structure.rfree,
+  }
+  json.dump(metadata, open(path, "w"), indent=2, sort_keys=True)
+
 def choose_structures(groups):
   chosen_clusters = set()
   cluster_attr = "cluster%d" % args.cluster_level
@@ -92,20 +104,22 @@ def choose_structures(groups):
         chosen_clusters.update(clusters)
         print("Choosing %s at %.2fA (%d/%d)" % (
           structure.id, structure.resolution, len(group.chosen), args.max_structures))
+        write_metadata(structure)
         if len(group.chosen) == args.max_structures:
           break
 
-if __name__ == "__main__":
-  args = parse_args()
-  structures = shared.get_structure_list()
-  groups = assign_groups(structures)
-  choose_structures(groups)
+def print_chosen(groups):
   groups.sort(key=lambda group: group.min_res)
   print("| Min Res (inclusive) | Max Res (exclusive) | Structures | Chosen |")
   print("|---------------------|---------------------|------------|--------|")
   for group in groups:
     print("| %19.2f | %19.2f | %10d | %6d |" % (
       group.min_res, group.max_res, len(group.structures), len(group.chosen)))
-  ids = sorted("%s\n" % s.id for g in groups for s in g.chosen)
-  with open("chosen_structures", "w") as f:
-    f.writelines(ids)
+
+if __name__ == "__main__":
+  os.mkdir("data")
+  args = parse_args()
+  structures = shared.get_structure_list()
+  groups = assign_groups(structures)
+  choose_structures(groups)
+  print_chosen(groups)

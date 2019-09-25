@@ -21,6 +21,7 @@ class Structure:
     self.id = row["structureId"].lower()
     self.resolution = float(row["resolution"])
     self.rwork = float(row["rWork"])
+    self.rfree = float(row["rFree"])
     self.chains = []
 
 class Chain:
@@ -38,6 +39,7 @@ def get_structure_dict():
     "experimentalTechnique",
     "resolution",
     "rWork",
+    "rFree",
     "entityMacromoleculeType",
     "clusterNumber95",
     "clusterNumber90",
@@ -46,12 +48,13 @@ def get_structure_dict():
     "clusterNumber40",
     "clusterNumber30",
   ]
-  if not os.path.exists("pdb-chains.csv"):
+  path = os.path.join("data", "pdb-chains.csv")
+  if not os.path.exists(path):
     print("Downloading RCSB custom report ...")
     url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
     url += "customReportColumns=%s&" % ",".join(columns)
     url += "format=csv&service=wsfile"
-    urllib.request.urlretrieve(url, "pdb-chains.csv")
+    urllib.request.urlretrieve(url, path)
   print("Reading structures from pdb-chains.csv ...")
   structures = {}
   with open("pdb-chains.csv") as f:
