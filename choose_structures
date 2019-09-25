@@ -6,6 +6,7 @@ import json
 import os
 import random
 import shared
+import urllib.request
 import xml.etree.ElementTree as ET
 
 def parse_args():
@@ -79,15 +80,20 @@ def assign_groups(structures):
   return groups
 
 def write_metadata(structure):
-  directory = os.path.join("data", structure.id)
-  os.mkdir(directory)
-  path = os.path.join(directory, "metadata.json")
+  path = os.path.join("data", structure.id, "metadata.json")
   metadata = {
     "reported_resolution": structure.resolution,
     "reported_rwork": structure.rwork,
     "reported_rfree": structure.rfree,
   }
   json.dump(metadata, open(path, "w"), indent=2, sort_keys=True)
+
+def download_fasta(structure):
+  url = "https://www.rcsb.org/pdb/download/downloadFastaFiles.do"
+  url += "?structureIdList=%s" % structure.id
+  url += "&compressionType=uncompressed"
+  path = os.path.join("data", structure.id, "%s.fasta" % structure.id)
+  urllib.request.urlretrieve(url, path)
 
 def choose_structures(groups):
   chosen_clusters = set()
@@ -104,7 +110,9 @@ def choose_structures(groups):
         chosen_clusters.update(clusters)
         print("Choosing %s at %.2fA (%d/%d)" % (
           structure.id, structure.resolution, len(group.chosen), args.max_structures))
+        os.mkdir(os.path.join("data", structure.id))
         write_metadata(structure)
+        download_fasta(structure)
         if len(group.chosen) == args.max_structures:
           break
 
