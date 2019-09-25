@@ -5,4 +5,4 @@
 *_passed
 *.pyc
 pdb-chains.csv
-sequences/*.fasta
+chosen_structures

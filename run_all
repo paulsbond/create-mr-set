@@ -3,4 +3,4 @@
 import shared
 
 if __name__ == "__main__":
-  shared.run("choose_structures", ["/data/pdb/validation_reports"])
+  shared.run("./choose_structures", ["/data/pdb/validation_reports"])
