@@ -7,13 +7,6 @@ Data for PhD test set paper.
 CCP4 7.0.076
 Python 3.6.8 with biopython-1.74
 
-## 1. Choose structures
-
-Running `choose_structures` chooses PDB structures for targets,
-ensuring they are spread over a range of resolutions,
-do not contain similar chains and meet certain validation criteria.
-Chosen structures are written to a file called `chosen_structures`.
-
 ## 2. Refine deposited structure
 
 Run the commands in `refine_commands` to prepare a standardised MTZ file

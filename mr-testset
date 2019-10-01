@@ -1,6 +1,424 @@
 #!/usr/bin/env python3
 
-import shared
+import argparse
+import csv
+import gzip
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import urllib.request
+import xml.etree.ElementTree as ET
+
+## ARGUMENTS
+
+def parse_args():
+  parser = argparse.ArgumentParser(description=(
+    "Creates a new molecular replacement (MR) test set. "
+    "Chooses random X-ray structures from the PDB. "
+    "Chosen structures cannot contain any similar chains. "
+    "Structures are also filtered by ensuring the 5 validation sliders "
+    "meet threshold percentiles "
+    "relative to other X-ray structures of similar resolution. "
+    "Data are standardised for each chosen structure "
+    "and the deposited coordinates are refined."))
+  # Positional
+  parser.add_argument("pdb_coords",
+    help="Directory containing divided coordinate files in PDB format (gzipped)")
+  parser.add_argument("pdb_sf",
+    help="Directory containing divided reflection data files in CIF format (gzipped)")
+  parser.add_argument("pdb_reports",
+    help="Directory containing divided validation reports (gzipped)")
+  # Optional
+  parser.add_argument("--max-structures", type=int, metavar="N", default=2, # TODO: Change back to default
+    help="Maximum number of structures to find in each resolution bin (default: 200)")
+  parser.add_argument("--res-min", type=float, metavar="X", default=1.0,
+    help="Minimum resolution (inclusive) (default: 1.0)")
+  parser.add_argument("--res-max", type=float, metavar="X", default=3.0, # TODO: Change back to default
+    help="Maximum resolution (exclusive) (default: 3.5)")
+  parser.add_argument("--res-bins", type=int, metavar="N", default=2, # TODO: Change back to default
+    help="Number of resolution bins (default: 10)")
+  parser.add_argument("--cluster-level", type=int, metavar="N", choices=[95,90,70,50,40,30], default=50,
+    help="Sequence identity used for filtering similar chains (default: 50)")
+  parser.add_argument("--rfree", type=int, metavar="N", default=50,
+    help="Rfree percentile threshold (default: 50)")
+  parser.add_argument("--clashscore", type=int, metavar="N", default=40,
+    help="Clashscore percentile threshold (default: 40)")
+  parser.add_argument("--rsrz-outliers", type=int, metavar="N", default=40,
+    help="Percentage RSRZ outliers percentile threshold (default: 40)")
+  parser.add_argument("--rama-outliers", type=int, metavar="N", default=40,
+    help="Percentage Ramachandran outliers percentile threshold (default: 40)")
+  parser.add_argument("--rota-outliers", type=int, metavar="N", default=40,
+    help="Percentage rotamer outliers percentile threshold (default: 40)")
+  args = parser.parse_args()
+  args.res_step = (args.res_max - args.res_min) / args.res_bins
+  return args
+
+## UTILS
+
+class ProgressBar:
+  def __init__(self, title, total, milestones=5):
+    self.title = title
+    self.total = total
+    self.done = 0
+    self.blips = 80 - len(title) - 15
+    step = int(total / milestones)
+    self.milestones = {0 + i * step for i in range(milestones)}
+    self.active = False
+
+  def increment(self):
+    self.done += 1
+    if sys.stdout.isatty() or self.done in self.milestones:
+      self.draw()
+
+  def draw(self):
+    hashes = "#" * round(self.done / self.total * self.blips)
+    dashes = "-" * (self.blips - len(hashes))
+    bar = "%s |%s%s| %5d/%5d" % (self.title, hashes, dashes, self.done, self.total)
+    if sys.stdout.isatty():
+      if self.active:
+        bar = "\r" + bar
+      print(bar, end="")
+      self.active = True
+    else:
+      print(bar)
+
+  def finish(self):
+    self.draw()
+    if sys.stdout.isatty():
+      print("")
+    self.active = False
+
+## PROGRAMS
+
+def run(executable, args=[], stdin=[], stdout=None):
+  pstdin = subprocess.PIPE if len(stdin) > 0 else None
+  pstdout = None if stdout is None else open(stdout, "w")
+  command = [executable] + args
+  p = subprocess.Popen(command, stdin=pstdin, stdout=pstdout, encoding="utf8")
+  if pstdin == subprocess.PIPE:
+    for line in stdin:
+      p.stdin.write(line + "\n")
+    p.stdin.close()
+  p.wait()
+
+## STRUCTURE
+
+class Structure:
+  def __init__(self, row):
+    self.id = row["structureId"].lower()
+    self.reported_res = float(row["resolution"])
+    self.reported_rwork = float(row["rWork"])
+    self.reported_rfree = float(row["rFree"])
+    self.chains = []
+
+    # Paths
+    self.cad_mtz = os.path.join(self.id, "cad.mtz" % self.id)
+    self.cif2mtz_mtz = os.path.join(self.id, "cif2mtz.mtz" % self.id)
+    self.cphasematch_txt = os.path.join(self.id, "cphasematch.txt" % self.id)
+    self.ctruncate_mtz = os.path.join(self.id, "ctruncate.mtz" % self.id)
+    self.deposited_cif = os.path.join(self.id, "%s-sf.cif" % self.id)
+    self.deposited_fasta = os.path.join(self.id, "%s.fasta" % self.id)
+    self.deposited_pdb = os.path.join(self.id, "%s.pdb" % self.id)
+    self.freerflag_mtz = os.path.join(self.id, "freerflag.mtz" % self.id)
+    self.joined_mtz = os.path.join(self.id, "joined.mtz" % self.id)
+    self.metadata_json = os.path.join(self.id, "metadata.json" % self.id)
+    self.metadata_json = os.path.join(self.id, "metadata.json")
+    self.no_symm_cif = os.path.join(self.id, "no_symm.cif" % self.id)
+    self.no_unl_pdb = os.path.join(self.id, "no_unl.pdb" % self.id)
+    self.reference_mmcif = os.path.join(self.id, "reference.mmcif" % self.id)
+    self.reference_mtz = os.path.join(self.id, "reference.mtz" % self.id)
+    self.reference_pdb = os.path.join(self.id, "reference.pdb" % self.id)
+    self.reference_xml = os.path.join(self.id, "reference.xml" % self.id)
+    self.validation_report = os.path.join(args.pdb_reports, self.id[1:3], self.id, "%s_validation.xml.gz" % self.id)
+
+  def validation_report_okay(self):
+    if not os.path.exists(self.validation_report): return False
+    with gzip.open(self.validation_report) as f:
+      content = f.read()
+    attribs = ET.fromstring(content).find("Entry").attrib
+    def key_okay(key, threshold):
+      return key in attribs and float(attribs[key]) >= threshold
+    return (key_okay("relative-percentile-DCC_Rfree", args.rfree) and
+            key_okay("relative-percentile-clashscore", args.clashscore) and
+            key_okay("relative-percentile-percent-RSRZ-outliers", args.rsrz_outliers) and
+            key_okay("relative-percentile-percent-rama-outliers", args.rama_outliers) and
+            key_okay("relative-percentile-percent-rota-outliers", args.rota_outliers))
+
+  def write_metadata(self):
+    json.dump({
+      "reported_resolution": self.reported_res,
+      "reported_rwork": self.reported_rwork,
+      "reported_rfree": self.reported_rfree,
+    }, open(self.metadata_json, "w"), indent=2, sort_keys=True)
+
+  def download_fasta(self):
+    url = "https://www.rcsb.org/pdb/download/downloadFastaFiles.do"
+    url += "?structureIdList=%s" % self.id
+    url += "&compressionType=uncompressed"
+    urllib.request.urlretrieve(url, self.deposited_fasta)
+
+class Chain:
+  def __init__(self, row):
+    self.id = row["chainId"]
+    self.cluster95 = row["clusterNumber95"]
+    self.cluster90 = row["clusterNumber90"]
+    self.cluster70 = row["clusterNumber70"]
+    self.cluster50 = row["clusterNumber50"]
+    self.cluster40 = row["clusterNumber40"]
+    self.cluster30 = row["clusterNumber30"]
+
+## PDB DATA
+
+def get_pdb_structures():
+  columns = [
+    "experimentalTechnique",
+    "resolution",
+    "rWork",
+    "rFree",
+    "entityMacromoleculeType",
+    "clusterNumber95",
+    "clusterNumber90",
+    "clusterNumber70",
+    "clusterNumber50",
+    "clusterNumber40",
+    "clusterNumber30",
+  ]
+  if not os.path.exists("pdb-chains.csv"):
+    print("Downloading RCSB custom report ...")
+    url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
+    url += "customReportColumns=%s&" % ",".join(columns)
+    url += "format=csv&service=wsfile"
+    urllib.request.urlretrieve(url, "pdb-chains.csv")
+  print("Reading structures from pdb-chains.csv ...")
+  structures = {}
+  with open("pdb-chains.csv") as f:
+    for row in csv.DictReader(f):
+      if any(row[column] == "" for column in columns): continue
+      if row["experimentalTechnique"] != "X-RAY DIFFRACTION": continue
+      if row["entityMacromoleculeType"] != "Polypeptide(L)": continue
+      structureId = row["structureId"]
+      if structureId not in structures:
+        structures[structureId] = Structure(row)
+      structures[structureId].chains.append(Chain(row))
+  return structures
+
+## CHOOSE STRUCTURES
+
+class ResolutionBin:
+  def __init__(self, i):
+    self.min_res = args.res_min + i * args.res_step
+    self.max_res = args.res_min + (i + 1) * args.res_step
+    self.structures = []
+    self.chosen = []
+
+def assign_resolution_bins(structures):
+  bins = [ResolutionBin(i) for i in range(args.res_bins)]
+  for structure in list(structures.values()):
+    if (structure.reported_res < args.res_min or
+        structure.reported_res >= args.res_max):
+      continue
+    i = int((structure.reported_res - args.res_min) / args.res_step)
+    bins[i].structures.append(structure)
+  return bins
+
+def choose_structures(res_bins):
+  chosen_clusters = set()
+  cluster_attr = "cluster%d" % args.cluster_level
+  res_bins.sort(key=lambda res_bin: len(res_bin.structures))
+  for res_bin in res_bins:
+    title = "Choosing %.2f-%.2fA structures" % (res_bin.min_res, res_bin.max_res)
+    progress_bar = ProgressBar(title, args.max_structures)
+    random.shuffle(res_bin.structures)
+    for structure in res_bin.structures:
+      clusters = {getattr(c, cluster_attr) for c in structure.chains}
+      if any(c in chosen_clusters for c in clusters):
+        continue
+      if structure.validation_report_okay():
+        res_bin.chosen.append(structure)
+        chosen_clusters.update(clusters)
+        progress_bar.increment()
+        os.mkdir(structure.id)
+        structure.write_metadata()
+        structure.download_fasta()
+        if len(res_bin.chosen) == args.max_structures:
+          break
+    progress_bar.finish()
+  return [s for r in res_bins for s in r.chosen]
+
+## PREPARE
+
+## MAIN
 
 if __name__ == "__main__":
-  shared.run("./choose_structures", ["/data/pdb/validation_reports"])
+  args = parse_args()
+  structures = get_pdb_structures()
+  res_bins = assign_resolution_bins(structures)
+  chosen = choose_structures(res_bins)
+
+## TO ADD
+
+def check_input():
+  if not os.path.exists(args.pdb):
+    sys.exit("Can't find input file: %s" % args.pdb)
+  if not os.path.exists(args.sf):
+    sys.exit("Can't find input file: %s" % args.sf)
+  if not os.path.exists(args.seq):
+    sys.exit("Can't find input file: %s" % args.seq)
+
+def unzip_input():
+  run("gunzip", ["-c", args.pdb], stdout=deposited_pdb())
+  run("gunzip", ["-c", args.sf], stdout=deposited_cif())
+
+def remove_symmetry_number():
+  shutil.copy(deposited_cif(), no_symm_cif())
+  run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
+
+def convert_to_mtz():
+  run("cif2mtz", [
+    "hklin", no_symm_cif(),
+    "hklout", cif2mtz_mtz(),
+  ], ["END"])
+
+def ctruncate(columns):
+  arguments = [
+    "-hklin", cif2mtz_mtz(),
+    "-hklout", ctruncate_mtz(),
+    "-seqin", args.seq,
+  ]
+  if len(columns) == 2:
+    arguments.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
+  else:
+    arguments.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
+  if columns[0][0] == "F":
+    arguments.append("-amplitudes")
+  run("ctruncate", arguments)
+
+def add_freeflag():
+  run("freerflag", [
+    "hklin", ctruncate_mtz(),
+    "hklout", freerflag_mtz()
+  ], ["END"])
+
+def rename_column_labels(f, sigf):
+  run("cad", [
+    "hklin1", freerflag_mtz(),
+    "hklout", cad_mtz()
+  ], [
+    "LABI FILE_NUMBER 1 E1=FreeR_flag E2=%s E3=%s" % (f, sigf),
+    "XNAME FILE_NUMBER 1 ALL=",
+    "DNAME FILE_NUMBER 1 ALL=",
+    "LABO FILE_NUMBER 1 E1=FREE E2=FP E3=SIGFP",
+    "END",
+  ])
+
+def standardise_mtz():
+  f = clipper.CCP4MTZfile()
+  f.open_read(cif2mtz_mtz())
+  labels = [str(l).split()[0].split("/")[-1] for l in f.column_labels()]
+  anomalous = False
+  if all(l in labels for l in ["FP", "SIGFP"]):
+    ctruncate(["FP", "SIGFP"])
+  elif all(l in labels for l in ["I", "SIGI"]):
+    ctruncate(["I", "SIGI"])
+  elif all(l in labels for l in ["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"]):
+    ctruncate(["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"])
+    anomalous = True
+  elif all(l in labels for l in ["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"]):
+    ctruncate(["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"])
+    anomalous = True
+  else:
+    sys.exit("Can't find columns to convert to F,SIGF: [%s]" % " ".join(labels))
+  add_freeflag()
+  if anomalous: rename_column_labels("FMEAN", "SIGFMEAN")
+  else: rename_column_labels("F", "SIGF")
+
+def remove_unl_residues():
+  shutil.copy(deposited_pdb(), no_unl_pdb())
+  run("sed", ["-i", "/^HET.*UNL/d", no_unl_pdb()])
+  run("sed", ["-i", "/^ATOM.*UNL/d", no_unl_pdb()])
+  run("sed", ["-i", "/^REMARK 500.*UNL/d", no_unl_pdb()])
+
+def refine_reference():
+  run("refmac5", [
+    "xyzin", no_unl_pdb(),
+    "hklin", cad_mtz(),
+    "xyzout", reference_pdb(),
+    "hklout", reference_mtz(),
+    "xmlout", reference_xml(),
+  ], [
+    "PHOUT"
+    "END"
+  ])
+
+def join_mtz_files():
+  run("cmtzjoin", [
+    "-mtzout", joined_mtz(),
+    "-mtzin", cad_mtz(),
+    "-colin", "FP,SIGFP",
+    "-colout", "FP,SIGFP",
+    "-mtzin", cad_mtz(),
+    "-colin", "FREE",
+    "-colout", "FREE",
+    "-mtzin", reference_mtz(),
+    "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB",
+    "-colout", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"
+  ])
+
+def mtz_metadata():
+  f = clipper.CCP4MTZfile()
+  f.open_read(joined_mtz())
+  return {
+    "resolution": round(f.resolution().limit(), 2),
+    "spacegroup": f.spacegroup().symbol_hm(),
+    "cell": [
+      round(f.cell().a(), 2),
+      round(f.cell().b(), 2),
+      round(f.cell().c(), 2),
+      round(clipper.Util_rad2d(f.cell().alpha()), 1),
+      round(clipper.Util_rad2d(f.cell().beta()), 1),
+      round(clipper.Util_rad2d(f.cell().gamma()), 1),
+    ],
+  }
+
+def reference_metadata():
+  root = ET.parse(reference_xml()).getroot()
+  rworks = list(root.iter("r_factor"))
+  rfrees = list(root.iter("r_free"))
+  return {
+    "reference_rwork": float(rworks[-1].text),
+    "reference_rfree": float(rfrees[-1].text),
+  }
+
+def is_semet():
+  with open(reference_pdb()) as f:
+    for line in f:
+      if line[:6] == "ATOM  " or line[:6] == "HETATM":
+        if line[17:20] == "MET": return False
+        if line[17:20] == "MSE": return True
+  return False
+
+def write_metadata():
+  metadata = {
+    "pdb_id": args.id,
+    "semet": is_semet()
+  }
+  metadata.update(mtz_metadata())
+  metadata.update(reference_metadata())
+  json.dump(metadata, open(metadata_json(), "w"), indent=2, sort_keys=True)
+
+if __name__ == "__main__":
+  args = parse_args()
+  run("mkdir", ["-p", args.id])
+  check_input()
+  unzip_input()
+  remove_symmetry_number()
+  convert_to_mtz()
+  standardise_mtz()
+  remove_unl_residues()
+  refine_reference()
+  join_mtz_files()
+  write_metadata()
+
