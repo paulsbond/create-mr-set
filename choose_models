@@ -40,25 +40,11 @@ def possible_gesamt_hits(chain):
         yield Hit(hit_pdb, hit_chain, qscore, rmsd, seqid)
 
 def alignment_stats(hit1, hit2):
-  tmp_path = "tmp%s" % uuid.uuid4()
+  tmp_prefix = "tmp%s" % uuid.uuid4()
   path1 = os.path.join(args.pdbs, hit1.pdb[1:3], "pdb%s.ent.gz" % hit1.pdb)
   path2 = os.path.join(args.pdbs, hit2.pdb[1:3], "pdb%s.ent.gz" % hit2.pdb)
-  shared.run("gesamt", [
-    path1, "-s", hit1.chain,
-    path2, "-s", hit2.chain,
-  ], stdout=tmp_path)
-  stats = {
-    "rmsd": None,
-    "seqid": None,
-  }
-  with open(tmp_path) as gesamt_log:
-    for line in gesamt_log:
-      if line[:19] == " RMSD             :":
-        stats["rmsd"] = float(line[19:])
-      if line[:19] == " Sequence Id:     :":
-        stats["seqid"] = float(line[19:])
-        break
-  os.remove(tmp_path)
+  tasks.superpose(path1, hit1.chain, path2, hit2.chain, tmp_prefix)
+  os.remove(tmp_path) # TODO: Remove all files starting with this prefix
   return stats
 
 def should_choose(hit, chosen_hits):

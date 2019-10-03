@@ -1,5 +1,6 @@
-import subprocess
 import os
+import re
+import subprocess
 import xml.etree.ElementTree as ET
 
 def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
@@ -16,6 +17,7 @@ def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
   p.wait()
 
 def refine(hklin, xyzin, prefix, cycles=10):
+  """Refine a structure with REFMAC"""
   hklout = "%s.mtz" % prefix
   xyzout = "%s.pdb" % prefix
   xmlout = "%s.xml" % prefix
@@ -48,3 +50,32 @@ def refine(hklin, xyzin, prefix, cycles=10):
     "initial_rfree": float(rfrees[0].text),
     "initial_rwork": float(rworks[0].text),
   }
+
+def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
+  """Superpose one chain over another with GESAMT"""
+  xyzout = "%s.pdb" % prefix
+  seqout = "%s.seq" % prefix
+  stdout = "%s.log" % prefix
+  stderr = "%s.err" % prefix
+  _run("gesamt", [
+    xyzin1, "-s", "//%s" % chain1,
+    xyzin2, "-s", "//%s" % chain2,
+    "-o", xyzout,
+    "-a", seqout,
+  ], stdout=stdout, stderr=stderr)
+  with open(stdout) as f: log = f.read()
+  if "DISSIMILAR and cannot be reasonably aligned" in log:
+    return { "error": "GESAMT: Query and target are too dissimilar" }
+  for path in (xyzout, seqout):
+    if not os.path.exists(path):
+      return { "error": "Output file missing: %s" % path }
+  result = {}
+  match = re.search(r" Q-score          : (\d+\.\d+)", log)
+  result["qscore"] = float(match.group(1))
+  match = re.search(r" RMSD             : (\d+\.\d+)", log)
+  result["rmsd"] = float(match.group(1))
+  match = re.search(r" Aligned residues : (\d+)", log)
+  result["length"] = int(match.group(1))
+  match = re.search(r" Sequence Id:     : (\d+\.\d+)", log)
+  result["seqid"] = float(match.group(1))
+  return result
