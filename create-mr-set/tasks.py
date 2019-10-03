@@ -3,6 +3,7 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 
+
 def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
   pstdin = subprocess.PIPE if len(stdin) > 0 else None
   pstdout = None if stdout is None else open(stdout, "w")
@@ -15,6 +16,44 @@ def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
       p.stdin.write(line + "\n")
     p.stdin.close()
   p.wait()
+
+
+def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
+  """Perform molecular replacement with PHASER"""
+  xyzout = "%s.1.pdb" % prefix
+  stdout = "%s.log" % prefix
+  stderr = "%s.err" % prefix
+  keywords = [
+    "MODE MR_AUTO",
+    "HKLIN %s" % hklin,
+    "ENSEMBLE model PDBFILE %s IDENTITY %s" % (xyzin, identity),
+    "SEARCH ENSEMBLE model NUM %d" % copies,
+    "ROOT %s" % prefix,
+    "PURGE ROT NUMBER 1",
+    "PURGE TRA NUMBER 1",
+    "PURGE RNP NUMBER 1",
+    "JOBS 1",
+  ]
+  for atom in atom_counts:
+    keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, atom_counts[atom]))
+  _run("phaser", stdin=keywords, stdout=stdout, stderr=stderr)
+  if not os.path.exists(xyzout):
+    with open(stdout) as f: log = f.read()
+    if not "EXIT STATUS:" in log:
+      return { "error": "Early termination" }
+    elif "EXIT STATUS: SUCCESS" in log:
+      return { "error": "No solution found" }
+    elif "INPUT ERROR: No scattering in coordinate file" in log:
+      return { "error": "No scattering in input coordinates" }
+    elif "INPUT ERROR: Structure Factors of Models" in log:
+      return { "error": "Bad ensemble given as input" }
+    else:
+      return { "error": "No coordinates produced" }
+  with open(xyzout) as pdb_file:
+    for line in pdb_file:
+      if line[:26] == "REMARK Log-Likelihood Gain":
+        return { "llg": float(line.split()[-1]) }
+
 
 def refine(hklin, xyzin, prefix, cycles=10):
   """Refine a structure with REFMAC"""
@@ -50,6 +89,7 @@ def refine(hklin, xyzin, prefix, cycles=10):
     "initial_rfree": float(rfrees[0].text),
     "initial_rwork": float(rworks[0].text),
   }
+
 
 def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
   """Superpose one chain over another with GESAMT"""

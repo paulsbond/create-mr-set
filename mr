@@ -73,23 +73,6 @@ def atom_counts():
         counts[element] += 1
   return counts
 
-def phaser():
-  keywords = [
-    "MODE MR_AUTO",
-    "HKLIN %s" % joined_mtz(),
-    "ENSEMBLE model PDBFILE %s IDENTITY %s" % (sculptor_pdb(), identity()),
-    "SEARCH ENSEMBLE model NUM %d" % n_copies(),
-    "ROOT %s" % os.path.join(args.dir, "phaser"),
-    "PURGE ROT NUMBER 1",
-    "PURGE TRA NUMBER 1",
-    "PURGE RNP NUMBER 1",
-    "JOBS 1",
-  ]
-  counts = atom_counts()
-  for atom in counts:
-    keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
-  shared.run("phaser", stdin=keywords, stdout=phaser_log())
-
 def cmtzjoin():
   shared.run("cmtzjoin", [
     "-mtzout", cmtzjoin_mtz(),
@@ -133,25 +116,7 @@ def metadata():
   if not has_atoms:
     metadata["error"] = "SCULPTOR: No atoms in coordinate file"
     return metadata
-  # PHASER
-  with open(phaser_log()) as f: log = f.read()
-  if not os.path.exists(phaser_pdb()):
-    if not "EXIT STATUS:" in log:
-      metadata["error"] = "PHASER: Terminated early"
-    elif "EXIT STATUS: SUCCESS" in log:
-      metadata["error"] = "PHASER: No solution found"
-    elif "INPUT ERROR: No scattering in coordinate file" in log:
-      metadata["error"] = "PHASER: No scattering in input coordinates"
-    elif "INPUT ERROR: Structure Factors of Models" in log:
-      metadata["error"] = "PHASER: Bad ensemble given as input"
-    else:
-      metadata["error"] = "PHASER: No coordinates produced"
-    return metadata
-  with open(phaser_pdb()) as pdb_file:
-    for line in pdb_file:
-      if line[:26] == "REMARK Log-Likelihood Gain":
-        metadata["phaser_llg"] = float(line.split()[-1])
-        break
+  # PHASER (extracted)
   # REFMAC (extracted)
   # CMTZJOIN
   if not os.path.exists(cmtzjoin_mtz()):
@@ -168,7 +133,7 @@ if __name__ == "__main__":
   args = parse_args()
   tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
   # sculptor()
-  # phaser()
+  tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), atom_counts())
   tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   cmtzjoin()
   cphasematch()
