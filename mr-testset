@@ -11,41 +11,6 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 
-## UTILS
-
-class ProgressBar:
-  def __init__(self, title, total, milestones=5):
-    self.title = title
-    self.total = total
-    self.done = 0
-    self.blips = 80 - len(title) - 15
-    step = int(total / milestones)
-    self.milestones = {0 + i * step for i in range(milestones)}
-    self.active = False
-
-  def increment(self):
-    self.done += 1
-    if sys.stdout.isatty() or self.done in self.milestones:
-      self.draw()
-
-  def draw(self):
-    hashes = "#" * round(self.done / self.total * self.blips)
-    dashes = "-" * (self.blips - len(hashes))
-    bar = "%s |%s%s| %5d/%5d" % (self.title, hashes, dashes, self.done, self.total)
-    if sys.stdout.isatty():
-      if self.active:
-        bar = "\r" + bar
-      print(bar, end="")
-      self.active = True
-    else:
-      print(bar)
-
-  def finish(self):
-    self.draw()
-    if sys.stdout.isatty():
-      print("")
-    self.active = False
-
 ## PROGRAMS
 
 def run(executable, args=[], stdin=[], stdout=None):
