@@ -11,19 +11,6 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 
-## PROGRAMS
-
-def run(executable, args=[], stdin=[], stdout=None):
-  pstdin = subprocess.PIPE if len(stdin) > 0 else None
-  pstdout = None if stdout is None else open(stdout, "w")
-  command = [executable] + args
-  p = subprocess.Popen(command, stdin=pstdin, stdout=pstdout, encoding="utf8")
-  if pstdin == subprocess.PIPE:
-    for line in stdin:
-      p.stdin.write(line + "\n")
-    p.stdin.close()
-  p.wait()
-
 ## STRUCTURE
 
 class Structure:
@@ -262,16 +249,7 @@ def remove_unl_residues():
   run("sed", ["-i", "/^REMARK 500.*UNL/d", no_unl_pdb()])
 
 def refine_reference():
-  run("refmac5", [
-    "xyzin", no_unl_pdb(),
-    "hklin", cad_mtz(),
-    "xyzout", reference_pdb(),
-    "hklout", reference_mtz(),
-    "xmlout", reference_xml(),
-  ], [
-    "PHOUT"
-    "END"
-  ])
+  tasks.refine(cad_mtz(), no_unl_pdb(), os.path.join(self.id, "reference"))
 
 def join_mtz_files():
   run("cmtzjoin", [

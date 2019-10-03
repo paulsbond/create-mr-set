@@ -105,19 +105,6 @@ def phaser():
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, counts[atom]))
   shared.run("phaser", stdin=keywords, stdout=phaser_log())
 
-def refmac():
-  shared.run("refmac5", [
-    "HKLIN", joined_mtz(),
-    "XYZIN", phaser_pdb(),
-    "HKLOUT", refmac_mtz(),
-    "XYZOUT", refmac_pdb(),
-    "XMLOUT", refmac_xml(),
-  ], [
-    "NCYCLES 10",
-    "PHOUT",
-    "END"
-  ], stdout=refmac_log())
-
 def cmtzjoin():
   shared.run("cmtzjoin", [
     "-mtzout", cmtzjoin_mtz(),
@@ -196,22 +183,6 @@ def metadata():
         metadata["phaser_llg"] = float(line.split()[-1])
         break
   # REFMAC
-  if not os.path.exists(refmac_pdb()):
-    metadata["error"] = "REFMAC: No coordinates produced"
-    return metadata
-  if not os.path.exists(refmac_mtz()):
-    metadata["error"] = "REFMAC: No reflection data produced"
-    return metadata
-  if not os.path.exists(refmac_xml()):
-    metadata["error"] = "REFMAC: No XML file produced"
-    return metadata
-  root = ET.parse(refmac_xml()).getroot()
-  rworks = list(root.iter("r_factor"))
-  rfrees = list(root.iter("r_free"))
-  metadata["refmac_rfree_final"] = float(rfrees[-1].text)
-  metadata["refmac_rfree_initial"] = float(rfrees[0].text)
-  metadata["refmac_rwork_final"] = float(rworks[-1].text)
-  metadata["refmac_rwork_initial"] = float(rworks[0].text)
   # CMTZJOIN
   if not os.path.exists(cmtzjoin_mtz()):
     metadata["error"] = "CMTZJOIN: No reflection data produced"
@@ -228,7 +199,7 @@ if __name__ == "__main__":
   # gesamt()
   # sculptor()
   # phaser()
-  refmac()
+  tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   cmtzjoin()
   cphasematch()
   json.dump(metadata(), open(metadata_json(), "w"), indent=2, sort_keys=True)
