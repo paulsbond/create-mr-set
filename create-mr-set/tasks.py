@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import uuid
 import xml.etree.ElementTree as ET
 
 
@@ -119,3 +120,42 @@ def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
   match = re.search(r" Sequence Id:     : (\d+\.\d+)", log)
   result["seqid"] = float(match.group(1))
   return result
+
+
+def trim_model(model, chain, alignment, prefix):
+  """Trim an MR model using SCULPTOR"""
+  tmpout = "tmp%s" % uuid.uuid4()
+  xyzout = "%s.pdb" % prefix
+  stdout = "%s.log" % prefix
+  stderr = "%s.err" % prefix
+  _run("phaser.sculptor", ["--stdin"], [
+    "input {",
+    "  model {"
+    "    file_name = %s" % model,
+    "    selection = chain %s" % chain,
+    "    remove_alternate_conformations = True",
+    "  }",
+    "  alignment {",
+    "    file_name = %s" % alignment,
+    "    target_index = 1",
+    "  }",
+    "}",
+    "output {",
+    "  folder = %s" % os.path.dirname(prefix),
+    "  root = '%s'" % tmpout,
+    "}",
+  ], stdout=stdout, stderr=stderr)
+  files = os.listdir(os.path.dirname(prefix))
+  tmpout = [f for f in files if tmpout in f]
+  tmpout = os.path.join(os.path.dirname(prefix), tmpout)
+  if not os.path.exists(tmpout):
+    return { "error": "No trimmed coordinates produced" }
+  os.rename(tmpout, xyzout)
+  has_atoms = False
+  with open(xyzout) as f:
+    for line in f:
+      if line[:6] == "ATOM  ":
+        has_atoms = True
+        break
+  if not has_atoms:
+    return { "error": "SCULPTOR: No atoms in trimmed coordinates" }

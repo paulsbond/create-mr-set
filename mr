@@ -36,25 +36,7 @@ def sculptor():
   records[0].seq = Seq.Seq(str(records[0].seq).upper())
   records[1].seq = Seq.Seq(str(records[1].seq).upper())
   SeqIO.write(records, sculptor_fasta(), "fasta")
-  shared.run("phaser.sculptor", ["--stdin"], [
-    "input {",
-    "  model {"
-    "    file_name = %s" % model_gz(),
-    "    selection = chain %s" % args.model_chain,
-    "    remove_alternate_conformations = True",
-    "  }",
-    "  alignment {",
-    "    file_name = %s" % sculptor_fasta(),
-    "    target_index = 1",
-    "  }",
-    "}",
-    "output {",
-    "  folder = %s" % args.dir,
-    "  root = 'sculptor'",
-    "}",
-  ], stdout=sculptor_log())
-  output_pdb = os.path.join(args.dir, "sculptor_pdb%s.ent.pdb" % args.model_pdb)
-  os.rename(output_pdb, sculptor_pdb())
+  tasks.trim_model(model_gz(), args.model_chain, sculptor_fasta(), os.path.join(args.dir, "sculptor"))
 
 def n_copies():
   for record in SeqIO.parse(protein_fasta(), "fasta"):
@@ -100,21 +82,9 @@ def metadata():
     "directory": args.dir,
   }
   # GESAMT (extracted)
-  # SCULPTOR
+  # SCULPTOR (extracted mostly)
   if not os.path.exists(sculptor_fasta()):
     metadata["error"] = "SCULPTOR: No input sequence file"
-    return metadata
-  if not os.path.exists(sculptor_pdb()):
-    metadata["error"] = "SCULPTOR: No coordinate file produced"
-    return metadata
-  with open(sculptor_pdb()) as f:
-    has_atoms = False
-    for line in f:
-      if line[:6] == "ATOM  ":
-        has_atoms = True
-        break
-  if not has_atoms:
-    metadata["error"] = "SCULPTOR: No atoms in coordinate file"
     return metadata
   # PHASER (extracted)
   # REFMAC (extracted)
@@ -132,7 +102,7 @@ def metadata():
 if __name__ == "__main__":
   args = parse_args()
   tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
-  # sculptor()
+  sculptor()
   tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), atom_counts())
   tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   cmtzjoin()
