@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+
+import argparse
+
+description = "Creates a new molecular replacement test set."
+
+parser = argparse.ArgumentParser(description=description, add_help=False)
+
+required = parser.add_argument_group("Required arguments")
+required.add_argument("--pdb-coords", metavar="DIR", required=True, help="Directory containing divided coordinate files in gzipped PDB format (??/pdb????.ent.gz)")
+required.add_argument("--pdb-sfs", metavar="DIR", required=True, help="Directory containing divided reflection data files in gzipped CIF format (??/r????sf.ent.gz)")
+required.add_argument("--pdb-reports", metavar="DIR", required=True, help="Directory containing divided validation reports in gzipped XML format (??/????/????_validation.xml.gz)")
+
+optional = parser.add_argument_group("Optional arguments")
+optional.add_argument("--help", action="help", help="Show this help message and exit")
+optional.add_argument("--jobs", type=int, metavar="N", default=1, help="Number of CPU threads to use (default: 1)")
+optional.add_argument("--model-model-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
+optional.add_argument("--model-model-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
+optional.add_argument("--model-target-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
+optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
+optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
+optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
+optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
+optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
+optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
+optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
+optional.add_argument("--validation-rama", type=int, metavar="N", default=40, help="Percentage Ramachandran outliers percentile threshold (default: 40)")
+optional.add_argument("--validation-rfree", type=int, metavar="N", default=50, help="Rfree percentile threshold (default: 50)")
+optional.add_argument("--validation-rota", type=int, metavar="N", default=40, help="Percentage rotamer outliers percentile threshold (default: 40)")
+optional.add_argument("--validation-rsrz", type=int, metavar="N", default=40, help="Percentage RSRZ outliers percentile threshold (default: 40)")
+
+args = parser.parse_args()
+args.res_step = (args.res_max - args.res_min) / args.res_bins

@@ -1,30 +1,11 @@
 #!/usr/bin/python3
 
 from Bio import SeqIO, Seq
-import argparse
 import gemmi
 import json
 import os
 import re
-import shared
 import xml.etree.ElementTree as ET
-
-def parse_args():
-  parser = argparse.ArgumentParser(description=(
-    "Uses gesamt to superpose the model chain over the target chain "
-    "and write out an alignment, "
-    "uses phaser.sculptor to trim the model chain using the alignment "
-    "and finally does MR using phaser"
-  ))
-  parser.add_argument("pdb", help="PDB ID of the target structure")
-  parser.add_argument("model", help="Directory name for the model (e.g. A_1xs5A)")
-  parser.add_argument("pdbs", help="Directory containing divided PDB files (??/pdb????.ent.gz)")
-  args = parser.parse_args()
-  args.chain = args.model[0]
-  args.model_pdb = args.model[2:6]
-  args.model_chain = args.model[6]
-  args.dir = os.path.join(args.pdb, "models", args.model)
-  return args
 
 def cmtzjoin_log(): return os.path.join(args.dir, "cmtzjoin.log")
 def cmtzjoin_mtz(): return os.path.join(args.dir, "cmtzjoin.mtz")
