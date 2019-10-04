@@ -1,36 +1,22 @@
-def sculptor():
+def make_alignment_for_sculptor():
   records = list(SeqIO.parse(gesamt_fasta(), "fasta"))
   records[0].id = "%s%s" % (args.pdb, args.chain)
   records[1].id = "%s%s" % (args.model_pdb, args.model_chain)
   records[0].seq = Seq.Seq(str(records[0].seq).upper())
   records[1].seq = Seq.Seq(str(records[1].seq).upper())
   SeqIO.write(records, sculptor_fasta(), "fasta")
-  tasks.trim_model(model_gz(), args.model_chain, sculptor_fasta(), os.path.join(args.dir, "sculptor"))
-
-def cmtzjoin():
-  shared.run("cmtzjoin", [
-    "-mtzout", cmtzjoin_mtz(),
-    "-mtzin", joined_mtz(), "-colin", "FP,SIGFP", "-colout", "FP,SIGFP",
-    "-mtzin", joined_mtz(), "-colin", "FREE", "-colout", "FREE",
-    "-mtzin", joined_mtz(), "-colin", "reference.HLA,reference.HLB,reference.HLC,reference.HLD", "-colout", "reference.HLA,reference.HLB,reference.HLC,reference.HLD",
-    "-mtzin", refmac_mtz(), "-colin", "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "-colout", "model.HLA,model.HLB,model.HLC,model.HLD",
-  ], stdout=cmtzjoin_log())
-
-def metadata():
-  # SCULPTOR
-  if not os.path.exists(sculptor_fasta()):
-    metadata["error"] = "SCULPTOR: No input sequence file"
-    return metadata
-  # CMTZJOIN
-  if not os.path.exists(cmtzjoin_mtz()):
-    metadata["error"] = "CMTZJOIN: No reflection data produced"
-    return metadata
 
 if __name__ == "__main__":
   args = parse_args()
   tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
-  sculptor()
+  make_alignment_for_sculptor()
+  tasks.trim_model(model_gz(), args.model_chain, sculptor_fasta(), os.path.join(args.dir, "sculptor"))
   tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), pdbtools.count_elements())
   tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
-  cmtzjoin()
+  tasks.combine_mtz(cmtzjoin_mtz(), [
+    (joined_mtz(), "FP,SIGFP", "FP,SIGFP"),
+    (joined_mtz(), "FREE", "FREE"),
+    (joined_mtz(), "reference.HLA,reference.HLB,reference.HLC,reference.HLD", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"),
+    (refmac_mtz(), "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "model.HLA,model.HLB,model.HLC,model.HLD"),
+  ])
   tasks.compare_phases(cmtzjoin_mtz(), "FP,SIGFP", "model.HLA,model.HLB,model.HLC,model.HLD", "reference.HLA,reference.HLB,reference.HLC,reference.HLD")

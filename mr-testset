@@ -188,6 +188,7 @@ def convert_to_mtz():
     "hklin", no_symm_cif(),
     "hklout", cif2mtz_mtz(),
   ], ["END"])
+  # stderr: "cif2mtz:  No symmetry information in keywords or file!"
 
 def ctruncate(columns):
   arguments = [

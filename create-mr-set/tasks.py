@@ -20,6 +20,22 @@ def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
   p.wait()
 
 
+def combine_mtz(prefix, *columns):
+  """Combine columns from multiple MTZ files with cmtzjoin"""
+  result = {
+    "hklout": "%s.mtz" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  args = ["-mtzout", result["hklout"]]
+  for col in columns:
+    args.extend(["-mtzin", col[0], "-colin", col[1], "-colout", col[2]])
+  _run("cmtzjoin", args, stdout=result["stdout"], stderr=result["stderr"])
+  if not os.path.exists(result["hklout"]):
+    return { "error": "No reflection data produced" }
+  return result
+
+
 def compare_phases(hklin, fo, wrk_hl, ref_hl, prefix):
   """Compare two sets of phases with cphasematch"""
   result = {
