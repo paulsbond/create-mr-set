@@ -132,6 +132,7 @@ def structural_homologues(xyzin, chain, prefix, archive, threads="auto"):
     "-nthreads=%s" % threads,
     "-o", result["txtout"],
   ], stdout=result["stdout"], stderr=result["stderr"])
+  return result
 
 
 def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
