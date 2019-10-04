@@ -1,12 +1,3 @@
-#!/usr/bin/python3
-
-from Bio import SeqIO, Seq
-import gemmi
-import json
-import os
-import re
-import xml.etree.ElementTree as ET
-
 def sculptor():
   records = list(SeqIO.parse(gesamt_fasta(), "fasta"))
   records[0].id = "%s%s" % (args.pdb, args.chain)
@@ -15,23 +6,6 @@ def sculptor():
   records[1].seq = Seq.Seq(str(records[1].seq).upper())
   SeqIO.write(records, sculptor_fasta(), "fasta")
   tasks.trim_model(model_gz(), args.model_chain, sculptor_fasta(), os.path.join(args.dir, "sculptor"))
-
-def n_copies():
-  for record in SeqIO.parse(protein_fasta(), "fasta"):
-    if record.id[0] == args.chain:
-      return len(record.id.split(","))
-
-def atom_counts():
-  model = gemmi.read_structure(reference_pdb())[0]
-  counts = {}
-  for chain in model:
-    for residue in chain:
-      for atom in residue:
-        element = str(atom.element.name)
-        if element not in counts:
-          counts[element] = 0
-        counts[element] += 1
-  return counts
 
 def cmtzjoin():
   shared.run("cmtzjoin", [
@@ -43,34 +17,20 @@ def cmtzjoin():
   ], stdout=cmtzjoin_log())
 
 def metadata():
-  metadata = {
-    "target_pdb": args.pdb,
-    "target_chain": args.chain,
-    "target_copies": n_copies(),
-    "model_pdb": args.model_pdb,
-    "model_chain": args.model_chain,
-    "directory": args.dir,
-  }
-  # GESAMT (extracted)
-  # SCULPTOR (extracted mostly)
+  # SCULPTOR
   if not os.path.exists(sculptor_fasta()):
     metadata["error"] = "SCULPTOR: No input sequence file"
     return metadata
-  # PHASER (extracted)
-  # REFMAC (extracted)
   # CMTZJOIN
   if not os.path.exists(cmtzjoin_mtz()):
     metadata["error"] = "CMTZJOIN: No reflection data produced"
     return metadata
-  # CPHASEMATCH (extracted)
-  return metadata
 
 if __name__ == "__main__":
   args = parse_args()
   tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
   sculptor()
-  tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), atom_counts())
+  tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), pdbtools.count_elements())
   tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   cmtzjoin()
   tasks.compare_phases(cmtzjoin_mtz(), "FP,SIGFP", "model.HLA,model.HLB,model.HLC,model.HLD", "reference.HLA,reference.HLB,reference.HLC,reference.HLD")
-  json.dump(metadata(), open(metadata_json(), "w"), indent=2, sort_keys=True)

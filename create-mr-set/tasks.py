@@ -1,4 +1,5 @@
 import os
+import pdbtools
 import re
 import subprocess
 import uuid
@@ -175,12 +176,6 @@ def trim_model(model, chain, alignment, prefix):
   ], stdout=result["stdout"], stderr=result["stderr"])
   if not os.path.exists(result["xyzout"]):
     return { "error": "No trimmed coordinates produced" }
-  has_atoms = False
-  with open(result["xyzout"]) as f:
-    for line in f:
-      if line[:6] == "ATOM  ":
-        has_atoms = True
-        break
-  if not has_atoms:
+  if not pdbtools.has_atoms(result["xyzout"]):
     return { "error": "SCULPTOR: No atoms in trimmed coordinates" }
   return result
