@@ -19,6 +19,28 @@ def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
   p.wait()
 
 
+def compare_phases(hklin, fo, wrk_hl, ref_hl, prefix):
+  """Compare two sets of phases with cphasematch"""
+  result = {
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  _run("cphasematch", [
+    "-mtzin", hklin,
+    "-colin-fo", fo,
+    "-colin-hl-1", wrk_hl,
+    "-colin-hl-2", ref_hl,
+  ], stdout=result["stdout"], stderr=result["stderr"])
+  with open(result["stdout"]) as f:
+    for line in f:
+      if "Overall statistics:" in line:
+        headers = next(f).split()
+        values = next(f).split()
+        result["mean_phase_error"] = float(values[headers.index("w1<dphi>")])
+        result["f_map_correlation"] = float(values[headers.index("wFcorr")])
+  return result
+
+
 def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
   """Perform molecular replacement with PHASER"""
   result = {
@@ -128,7 +150,7 @@ def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
 
 
 def trim_model(model, chain, alignment, prefix):
-  """Trim a molecular replacement model using SCULPTOR"""
+  """Trim a molecular replacement model with SCULPTOR"""
   result = {
     "xyzout": "%s_%s.pdb" % (prefix, os.path.basename(model).split(".")[0]),
     "stdout": "%s.log" % prefix,
