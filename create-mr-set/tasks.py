@@ -119,6 +119,21 @@ def refine(hklin, xyzin, prefix, cycles=10):
   return result
 
 
+def structural_homologues(xyzin, chain, prefix, archive, threads="auto"):
+  """Search for structural homologues with a GESAMT achrive search"""
+  result = {
+    "txtout": "%s.txt" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  _run("gesamt", [
+    xyzin, "-s", "//%s" % chain,
+    "-archive", archive,
+    "-nthreads=%s" % threads,
+    "-o", result["txtout"],
+  ], stdout=result["stdout"], stderr=result["stderr"])
+
+
 def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
   """Superpose one chain over another with GESAMT"""
   result = {
