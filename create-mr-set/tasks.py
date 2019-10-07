@@ -1,3 +1,4 @@
+import Bio.SeqIO
 import os
 import pdbtools
 import re
@@ -96,6 +97,16 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
       if line[:26] == "REMARK Log-Likelihood Gain":
         result["llg"] = float(line.split()[-1])
         return result
+
+
+def post_process_gesamt_alignment(alnin, alnout, id1, id2):
+  """Transform the sequence to uppercase and assign new IDs"""
+  records = list(Bio.SeqIO.parse(alnin, "fasta"))
+  records[0].id = id1
+  records[1].id = id2
+  records[0].seq = Seq.Seq(str(records[0].seq).upper())
+  records[1].seq = Seq.Seq(str(records[1].seq).upper())
+  Bio.SeqIO.write(records, alnout, "fasta")
 
 
 def refine(hklin, xyzin, prefix, cycles=10):
