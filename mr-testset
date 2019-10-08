@@ -1,25 +1,4 @@
-#!/usr/bin/env python3
-
-import csv
-import gzip
-import json
-import os
-import random
-import shutil
-import subprocess
-import sys
-import urllib.request
-import xml.etree.ElementTree as ET
-
-## STRUCTURE
-
-class Structure:
-  def __init__(self, row):
-    self.id = row["structureId"].lower()
-    self.reported_res = float(row["resolution"])
-    self.reported_rwork = float(row["rWork"])
-    self.reported_rfree = float(row["rFree"])
-    self.chains = []
+#!/usr/bin/python3
 
     # Paths
     self.cad_mtz = os.path.join(self.id, "cad.mtz" % self.id)
@@ -39,20 +18,6 @@ class Structure:
     self.reference_mtz = os.path.join(self.id, "reference.mtz" % self.id)
     self.reference_pdb = os.path.join(self.id, "reference.pdb" % self.id)
     self.reference_xml = os.path.join(self.id, "reference.xml" % self.id)
-    self.validation_report = os.path.join(args.pdb_reports, self.id[1:3], self.id, "%s_validation.xml.gz" % self.id)
-
-  def validation_report_okay(self):
-    if not os.path.exists(self.validation_report): return False
-    with gzip.open(self.validation_report) as f:
-      content = f.read()
-    attribs = ET.fromstring(content).find("Entry").attrib
-    def key_okay(key, threshold):
-      return key in attribs and float(attribs[key]) >= threshold
-    return (key_okay("relative-percentile-DCC_Rfree", args.rfree) and
-            key_okay("relative-percentile-clashscore", args.clashscore) and
-            key_okay("relative-percentile-percent-RSRZ-outliers", args.rsrz_outliers) and
-            key_okay("relative-percentile-percent-rama-outliers", args.rama_outliers) and
-            key_okay("relative-percentile-percent-rota-outliers", args.rota_outliers))
 
   def write_metadata(self):
     json.dump({
@@ -62,100 +27,11 @@ class Structure:
     }, open(self.metadata_json, "w"), indent=2, sort_keys=True)
 
   def download_fasta(self):
+    
     url = "https://www.rcsb.org/pdb/download/downloadFastaFiles.do"
     url += "?structureIdList=%s" % self.id
     url += "&compressionType=uncompressed"
     urllib.request.urlretrieve(url, self.deposited_fasta)
-
-class Chain:
-  def __init__(self, row):
-    self.id = row["chainId"]
-    self.cluster95 = row["clusterNumber95"]
-    self.cluster90 = row["clusterNumber90"]
-    self.cluster70 = row["clusterNumber70"]
-    self.cluster50 = row["clusterNumber50"]
-    self.cluster40 = row["clusterNumber40"]
-    self.cluster30 = row["clusterNumber30"]
-
-## PDB DATA
-
-def get_pdb_structures():
-  columns = [
-    "experimentalTechnique",
-    "resolution",
-    "rWork",
-    "rFree",
-    "entityMacromoleculeType",
-    "clusterNumber95",
-    "clusterNumber90",
-    "clusterNumber70",
-    "clusterNumber50",
-    "clusterNumber40",
-    "clusterNumber30",
-  ]
-  if not os.path.exists("pdb-chains.csv"):
-    print("Downloading RCSB custom report ...")
-    url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
-    url += "customReportColumns=%s&" % ",".join(columns)
-    url += "format=csv&service=wsfile"
-    urllib.request.urlretrieve(url, "pdb-chains.csv")
-  print("Reading structures from pdb-chains.csv ...")
-  structures = {}
-  with open("pdb-chains.csv") as f:
-    for row in csv.DictReader(f):
-      if any(row[column] == "" for column in columns): continue
-      if row["experimentalTechnique"] != "X-RAY DIFFRACTION": continue
-      if row["entityMacromoleculeType"] != "Polypeptide(L)": continue
-      structureId = row["structureId"]
-      if structureId not in structures:
-        structures[structureId] = Structure(row)
-      structures[structureId].chains.append(Chain(row))
-  return structures
-
-## CHOOSE STRUCTURES
-
-class ResolutionBin:
-  def __init__(self, i):
-    self.min_res = args.res_min + i * args.res_step
-    self.max_res = args.res_min + (i + 1) * args.res_step
-    self.structures = []
-    self.chosen = []
-
-def assign_resolution_bins(structures):
-  bins = [ResolutionBin(i) for i in range(args.res_bins)]
-  for structure in list(structures.values()):
-    if (structure.reported_res < args.res_min or
-        structure.reported_res >= args.res_max):
-      continue
-    i = int((structure.reported_res - args.res_min) / args.res_step)
-    bins[i].structures.append(structure)
-  return bins
-
-def choose_structures(res_bins):
-  chosen_clusters = set()
-  cluster_attr = "cluster%d" % args.cluster_level
-  res_bins.sort(key=lambda res_bin: len(res_bin.structures))
-  for res_bin in res_bins:
-    title = "Choosing %.2f-%.2fA structures" % (res_bin.min_res, res_bin.max_res)
-    progress_bar = ProgressBar(title, args.max_structures)
-    random.shuffle(res_bin.structures)
-    for structure in res_bin.structures:
-      clusters = {getattr(c, cluster_attr) for c in structure.chains}
-      if any(c in chosen_clusters for c in clusters):
-        continue
-      if structure.validation_report_okay():
-        res_bin.chosen.append(structure)
-        chosen_clusters.update(clusters)
-        progress_bar.increment()
-        os.mkdir(structure.id)
-        structure.write_metadata()
-        structure.download_fasta()
-        if len(res_bin.chosen) == args.max_structures:
-          break
-    progress_bar.finish()
-  return [s for r in res_bins for s in r.chosen]
-
-## PREPARE
 
 ## MAIN
 

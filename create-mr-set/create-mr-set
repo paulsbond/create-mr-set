@@ -1,35 +1,123 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
+import random
+import rcsb
 
-description = "Creates a new molecular replacement test set."
+## ARGUMENTS
 
-parser = argparse.ArgumentParser(description=description, add_help=False)
+def parse_args():
+  description = "Creates a new molecular replacement test set."
 
-required = parser.add_argument_group("Required arguments")
-required.add_argument("--pdb-coords", metavar="DIR", required=True, help="Directory containing divided coordinate files in gzipped PDB format (??/pdb????.ent.gz)")
-required.add_argument("--pdb-sfs", metavar="DIR", required=True, help="Directory containing divided reflection data files in gzipped CIF format (??/r????sf.ent.gz)")
-required.add_argument("--pdb-reports", metavar="DIR", required=True, help="Directory containing divided validation reports in gzipped XML format (??/????/????_validation.xml.gz)")
+  parser = argparse.ArgumentParser(description=description, add_help=False)
 
-optional = parser.add_argument_group("Optional arguments")
-optional.add_argument("--help", action="help", help="Show this help message and exit")
-optional.add_argument("--jobs", type=int, metavar="N", default=1, help="Number of CPU threads to use (default: 1)")
-optional.add_argument("--model-model-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
-optional.add_argument("--model-model-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
-optional.add_argument("--model-target-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
-optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
-optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
-optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
-optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
-optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
-optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
-optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
-optional.add_argument("--validation-rama", type=int, metavar="N", default=40, help="Percentage Ramachandran outliers percentile threshold (default: 40)")
-optional.add_argument("--validation-rfree", type=int, metavar="N", default=50, help="Rfree percentile threshold (default: 50)")
-optional.add_argument("--validation-rota", type=int, metavar="N", default=40, help="Percentage rotamer outliers percentile threshold (default: 40)")
-optional.add_argument("--validation-rsrz", type=int, metavar="N", default=40, help="Percentage RSRZ outliers percentile threshold (default: 40)")
+  required = parser.add_argument_group("Required arguments")
+  required.add_argument("--pdb-coords", metavar="DIR", required=True, help="Directory containing divided coordinate files in gzipped PDB format (??/pdb????.ent.gz)")
+  required.add_argument("--pdb-sfs", metavar="DIR", required=True, help="Directory containing divided reflection data files in gzipped CIF format (??/r????sf.ent.gz)")
+  required.add_argument("--pdb-reports", metavar="DIR", required=True, help="Directory containing divided validation reports in gzipped XML format (??/????/????_validation.xml.gz)")
 
-args = parser.parse_args()
-args.res_step = (args.res_max - args.res_min) / args.res_bins
+  optional = parser.add_argument_group("Optional arguments")
+  optional.add_argument("--help", action="help", help="Show this help message and exit")
+  optional.add_argument("--jobs", type=int, metavar="N", default=1, help="Number of CPU threads to use (default: 1)")
+  optional.add_argument("--model-model-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
+  optional.add_argument("--model-model-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
+  optional.add_argument("--model-target-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
+  optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
+  optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
+  optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
+  optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
+  optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
+  optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
+  optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
+  optional.add_argument("--validation-rama", type=int, metavar="N", default=40, help="Percentage Ramachandran outliers percentile threshold (default: 40)")
+  optional.add_argument("--validation-rfree", type=int, metavar="N", default=50, help="Rfree percentile threshold (default: 50)")
+  optional.add_argument("--validation-rota", type=int, metavar="N", default=40, help="Percentage rotamer outliers percentile threshold (default: 40)")
+  optional.add_argument("--validation-rsrz", type=int, metavar="N", default=40, help="Percentage RSRZ outliers percentile threshold (default: 40)")
+
+  args = parser.parse_args()
+  args.res_step = (args.res_max - args.res_min) / args.res_bins
+  return args
+
+## CHOOSE STRUCTURES
+
+class ResolutionBin:
+  def __init__(self, i):
+    self.min_res = args.res_min + i * args.res_step
+    self.max_res = args.res_min + (i + 1) * args.res_step
+    self.structures = []
+    self.chosen = []
+
+def assign_resolution_bins(structures):
+  bins = [ResolutionBin(i) for i in range(args.res_bins)]
+  for structure in list(structures.values()):
+    if (structure.resolution < args.res_min or
+        structure.resolution >= args.res_max):
+      continue
+    i = int((structure.resolution - args.res_min) / args.res_step)
+    bins[i].structures.append(structure)
+  return bins
+
+def input_files_exist(structure):
+  structure.paths = {
+    "gzipped_pdb_coords": os.path.join(args.pdb_coords, structure.id[1:3] "pdb%s.ent.gz" % structure.id)
+    "gzipped_pdb_sfs": os.path.join(args.pdb_sfs, structure.id[1:3], "r%ssf.ent.gz" % structure.id)
+    "gzipped_pdb_report": os.path.join(args.pdb_reports, structure.id[1:3], structure.id, "%s_validation.xml.gz" % structure.id)
+  }
+  return all(os.path.exists(p) for p in structure.paths.values())
+
+def validation_report_okay(structure):
+  path = os.path.join(args.pdb_reports, structure.id[1:3], structure.id, "%s_validation.xml.gz" % structure.id)
+  attrib_key_dict = {
+    "relative-percentile-DCC_Rfree": "validation_clash",
+    "relative-percentile-clashscore": "validation_rama",
+    "relative-percentile-percent-RSRZ-outliers": "validation_rfree",
+    "relative-percentile-percent-rama-outliers": "validation_rota",
+    "relative-percentile-percent-rota-outliers": "validation_rsrz",
+  }
+  if not os.path.exists(path): return False
+  with gzip.open(path) as f:
+    content = f.read()
+  attribs = ET.fromstring(content).find("Entry").attrib
+  for attrib in attrib_key_dict:
+    key = attrib_key_dict[attrib]
+    if attrib not in attribs: return False
+    percentile = float(attribs[attrib])
+    threshold = args[key]
+    if percentile < threshold: return False
+    setattr(structure, key, percentile)
+  return True
+
+def choose_structures(structures):
+  res_bins = assign_resolution_bins(structures)
+  chosen_clusters = set()
+  cluster_attr = "cluster%d" % args.structure_seqid
+  res_bins.sort(key=lambda res_bin: len(res_bin.structures))
+  for res_bin in res_bins:
+    title = "Choosing %.2f-%.2fA structures" % (res_bin.min_res, res_bin.max_res)
+    progress_bar = logging.ProgressBar(title, args.num_structures)
+    random.shuffle(res_bin.structures)
+    for structure in res_bin.structures:
+      clusters = {getattr(c, cluster_attr) for c in structure.chains}
+      if any(c in chosen_clusters for c in clusters):
+        continue
+      if validation_report_okay(structure):
+        res_bin.chosen.append(structure)
+        chosen_clusters.update(clusters)
+        progress_bar.increment()
+        # os.mkdir(structure.id)
+        # structure.write_metadata()
+        # structure.download_fasta()
+        if len(res_bin.chosen) == args.num_structures:
+          break
+    progress_bar.finish()
+  return [s for r in res_bins for s in r.chosen]
+
+## MAIN
+
+if __name__ == "__main__":
+  args = parse_args()
+  structures = rcsb.structures()
+  chosen = choose_structures(structures)

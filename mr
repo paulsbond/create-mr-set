@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
 tasks.post_process_gesamt_alignment(
   alnin=gesamt_fasta(),
