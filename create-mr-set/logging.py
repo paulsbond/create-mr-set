@@ -30,5 +30,6 @@ class ProgressBar:
 
   def finish(self):
     self.draw()
-    print("\n" if sys.stdout.isatty() else "")
+    if sys.stdout.isatty():
+      print("")
     self.active = False

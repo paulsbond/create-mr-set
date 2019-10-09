@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import datetime
+import gzip
 import logging
+import os
 import random
 import rcsb
+import xml.etree.ElementTree as ET
 
 ## ARGUMENTS
 
@@ -26,9 +30,9 @@ def parse_args():
   optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
   optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
-  optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
+  optional.add_argument("--num-structures", type=int, metavar="N", default=10, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=5, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
@@ -62,9 +66,9 @@ def assign_resolution_bins(structures):
 
 def input_files_exist(structure):
   structure.paths = {
-    "gzipped_pdb_coords": os.path.join(args.pdb_coords, structure.id[1:3] "pdb%s.ent.gz" % structure.id)
-    "gzipped_pdb_sfs": os.path.join(args.pdb_sfs, structure.id[1:3], "r%ssf.ent.gz" % structure.id)
-    "gzipped_pdb_report": os.path.join(args.pdb_reports, structure.id[1:3], structure.id, "%s_validation.xml.gz" % structure.id)
+    "gzipped_pdb_coords": os.path.join(args.pdb_coords, structure.id[1:3], "pdb%s.ent.gz" % structure.id),
+    "gzipped_pdb_sfs": os.path.join(args.pdb_sfs, structure.id[1:3], "r%ssf.ent.gz" % structure.id),
+    "gzipped_pdb_report": os.path.join(args.pdb_reports, structure.id[1:3], structure.id, "%s_validation.xml.gz" % structure.id),
   }
   return all(os.path.exists(p) for p in structure.paths.values())
 
@@ -85,25 +89,40 @@ def validation_report_okay(structure):
     key = attrib_key_dict[attrib]
     if attrib not in attribs: return False
     percentile = float(attribs[attrib])
-    threshold = args[key]
+    threshold = getattr(args, key)
     if percentile < threshold: return False
     setattr(structure, key, percentile)
   return True
 
 def choose_structures(structures):
+  print("## CHOOSING STRUCTURES ##\n")
   res_bins = assign_resolution_bins(structures)
   chosen_clusters = set()
   cluster_attr = "cluster%d" % args.structure_seqid
   res_bins.sort(key=lambda res_bin: len(res_bin.structures))
   for res_bin in res_bins:
-    title = "Choosing %.2f-%.2fA structures" % (res_bin.min_res, res_bin.max_res)
+    title = "Choosing %.2f-%.2fA structures (%d to choose from)" % (
+      res_bin.min_res, res_bin.max_res, len(res_bin.structures))
     progress_bar = logging.ProgressBar(title, args.num_structures)
     random.shuffle(res_bin.structures)
+    num_checked = 0
+    num_missing_files = 0
+    num_too_similar = 0
+    num_failed_validation = 0
     for structure in res_bin.structures:
+      passed = True
+      num_checked += 1
+      if not input_files_exist(structure):
+        num_missing_files += 1
+        passed = False
       clusters = {getattr(c, cluster_attr) for c in structure.chains}
       if any(c in chosen_clusters for c in clusters):
-        continue
-      if validation_report_okay(structure):
+        num_too_similar += 1
+        passed = False
+      if not validation_report_okay(structure):
+        num_failed_validation += 1
+        passed = False
+      if passed:
         res_bin.chosen.append(structure)
         chosen_clusters.update(clusters)
         progress_bar.increment()
@@ -113,11 +132,28 @@ def choose_structures(structures):
         if len(res_bin.chosen) == args.num_structures:
           break
     progress_bar.finish()
+    print("Total number checked:          %6d" % num_checked)
+    print("Missing input files:           %6d" % num_missing_files)
+    print("Too similar to already chosen: %6d" % num_too_similar)
+    print("Failed validation checks:      %6d" % num_failed_validation)
+    print("")
   return [s for r in res_bins for s in r.chosen]
 
 ## MAIN
 
 if __name__ == "__main__":
+  print(
+    "################################################################################\n"
+    "# Create MR Set                                                                #\n"
+    "# Please cite: XXXX                                                            #\n"
+    "################################################################################\n"
+  )
+  print("Time: %s\n" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
   args = parse_args()
+  for arg in sorted(vars(args)):
+    print("%20s  %s" % (arg, getattr(args, arg)))
+  print()
+
   structures = rcsb.structures()
   chosen = choose_structures(structures)

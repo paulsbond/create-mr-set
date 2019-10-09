@@ -21,7 +21,6 @@ class _Chain:
     self.cluster30 = row["clusterNumber30"]
 
 def download_custom_report(columns, path):
-  print("Downloading RCSB custom report ...")
   url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
   url += "customReportColumns=%s&" % ",".join(columns)
   url += "format=csv&service=wsfile"
@@ -43,7 +42,6 @@ def structures():
   ]
   if not os.path.exists("pdb-chains.csv"):
     download_custom_report(columns, "pdb-chains.csv")
-  print("Reading structures from pdb-chains.csv ...")
   structures = {}
   with open("pdb-chains.csv") as f:
     for row in csv.DictReader(f):
