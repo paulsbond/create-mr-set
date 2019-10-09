@@ -1,56 +1,5 @@
 #!/usr/bin/python3
 
-    # Paths
-    self.cad_mtz = os.path.join(self.id, "cad.mtz" % self.id)
-    self.cif2mtz_mtz = os.path.join(self.id, "cif2mtz.mtz" % self.id)
-    self.cphasematch_txt = os.path.join(self.id, "cphasematch.txt" % self.id)
-    self.ctruncate_mtz = os.path.join(self.id, "ctruncate.mtz" % self.id)
-    self.deposited_cif = os.path.join(self.id, "%s-sf.cif" % self.id)
-    self.deposited_fasta = os.path.join(self.id, "%s.fasta" % self.id)
-    self.deposited_pdb = os.path.join(self.id, "%s.pdb" % self.id)
-    self.freerflag_mtz = os.path.join(self.id, "freerflag.mtz" % self.id)
-    self.joined_mtz = os.path.join(self.id, "joined.mtz" % self.id)
-    self.metadata_json = os.path.join(self.id, "metadata.json" % self.id)
-    self.metadata_json = os.path.join(self.id, "metadata.json")
-    self.no_symm_cif = os.path.join(self.id, "no_symm.cif" % self.id)
-    self.no_unl_pdb = os.path.join(self.id, "no_unl.pdb" % self.id)
-    self.reference_mmcif = os.path.join(self.id, "reference.mmcif" % self.id)
-    self.reference_mtz = os.path.join(self.id, "reference.mtz" % self.id)
-    self.reference_pdb = os.path.join(self.id, "reference.pdb" % self.id)
-    self.reference_xml = os.path.join(self.id, "reference.xml" % self.id)
-
-  def write_metadata(self):
-    json.dump({
-      "reported_resolution": self.reported_res,
-      "reported_rwork": self.reported_rwork,
-      "reported_rfree": self.reported_rfree,
-    }, open(self.metadata_json, "w"), indent=2, sort_keys=True)
-
-  def download_fasta(self):
-    
-    url = "https://www.rcsb.org/pdb/download/downloadFastaFiles.do"
-    url += "?structureIdList=%s" % self.id
-    url += "&compressionType=uncompressed"
-    urllib.request.urlretrieve(url, self.deposited_fasta)
-
-## MAIN
-
-if __name__ == "__main__":
-  args = parse_args()
-  structures = get_pdb_structures()
-  res_bins = assign_resolution_bins(structures)
-  chosen = choose_structures(res_bins)
-
-## TO ADD
-
-def check_input():
-  if not os.path.exists(args.pdb):
-    sys.exit("Can't find input file: %s" % args.pdb)
-  if not os.path.exists(args.sf):
-    sys.exit("Can't find input file: %s" % args.sf)
-  if not os.path.exists(args.seq):
-    sys.exit("Can't find input file: %s" % args.seq)
-
 def unzip_input():
   run("gunzip", ["-c", args.pdb], stdout=deposited_pdb())
   run("gunzip", ["-c", args.sf], stdout=deposited_cif())
@@ -196,4 +145,3 @@ if __name__ == "__main__":
   refine_reference()
   join_mtz_files()
   write_metadata()
-

@@ -7,7 +7,7 @@ class ProgressBar:
     step = int(total / milestones)
     self.milestones = {0 + i * step for i in range(milestones)}
     self.active = False
-    print("%s..." % task)
+    print("%s ..." % task)
     if sys.stdout.isatty():
       self.draw()
 

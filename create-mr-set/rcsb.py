@@ -4,11 +4,11 @@ import urllib.request
 
 class _Structure:
   def __init__(self, row):
-    self.id = row["structureId"].lower()
+    self.id = row["structureId"]
     self.resolution = float(row["resolution"])
     self.rwork = float(row["rWork"])
     self.rfree = float(row["rFree"])
-    self.chains = []
+    self.chains = {}
 
 class _Chain:
   def __init__(self, row):
@@ -21,6 +21,7 @@ class _Chain:
     self.cluster30 = row["clusterNumber30"]
 
 def download_custom_report(columns, path):
+  print("Downloading custom report ...")
   url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
   url += "customReportColumns=%s&" % ",".join(columns)
   url += "format=csv&service=wsfile"
@@ -42,6 +43,7 @@ def structures():
   ]
   if not os.path.exists("pdb-chains.csv"):
     download_custom_report(columns, "pdb-chains.csv")
+  print("Reading structures from pdb-chains.csv ...")
   structures = {}
   with open("pdb-chains.csv") as f:
     for row in csv.DictReader(f):
@@ -49,7 +51,8 @@ def structures():
       if row["experimentalTechnique"] != "X-RAY DIFFRACTION": continue
       if row["entityMacromoleculeType"] != "Polypeptide(L)": continue
       structureId = row["structureId"]
+      chainId = row["chainId"]
       if structureId not in structures:
         structures[structureId] = _Structure(row)
-      structures[structureId].chains.append(_Chain(row))
+      structures[structureId].chains[chainId] = _Chain(row)
   return structures
