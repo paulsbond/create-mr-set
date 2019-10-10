@@ -1,4 +1,5 @@
 import multiprocessing
+import subprocess
 import sys
 
 class ProgressBar:
@@ -35,13 +36,27 @@ class ProgressBar:
       print("")
     self.active = False
 
-def parallel(title, func, items, processes=None):
-  progress_bar = ProgressBar(title, len(items))
-  def callback(x):
+def run(executable, args=[], stdin=[], stdout=None, stderr=None):
+  pstdin = subprocess.PIPE if len(stdin) > 0 else None
+  pstdout = None if stdout is None else open(stdout, "w")
+  pstderr = None if stderr is None else open(stderr, "w")
+  command = [executable] + args
+  p = subprocess.Popen(command,
+    stdin=pstdin, stdout=pstdout, stderr=pstderr, encoding="utf8")
+  if pstdin == subprocess.PIPE:
+    for line in stdin:
+      p.stdin.write(line + "\n")
+    p.stdin.close()
+  p.wait()
+
+def parallel(title, func, structures, processes=None):
+  progress_bar = ProgressBar(title, len(structures))
+  def callback(s):
+    structures[s.id] = s
     progress_bar.increment()
   pool = multiprocessing.Pool(processes)
-  for item in items:
-    pool.apply_async(func, args=(item,), callback=callback)
+  for s in structures.values():
+    pool.apply_async(func, args=(s,), callback=callback)
   pool.close()
   pool.join()
   progress_bar.finish()

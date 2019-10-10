@@ -2,24 +2,30 @@ import Bio.SeqIO
 import os
 import pdbtools
 import re
-import subprocess
+import utils
 import uuid
 import xml.etree.ElementTree as ET
 
-
-def _run(executable, args=[], stdin=[], stdout=None, stderr=None):
-  pstdin = subprocess.PIPE if len(stdin) > 0 else None
-  pstdout = None if stdout is None else open(stdout, "w")
-  pstderr = None if stderr is None else open(stderr, "w")
-  command = [executable] + args
-  p = subprocess.Popen(command,
-    stdin=pstdin, stdout=pstdout, stderr=pstderr, encoding="utf8")
-  if pstdin == subprocess.PIPE:
-    for line in stdin:
-      p.stdin.write(line + "\n")
-    p.stdin.close()
-  p.wait()
-
+def cif2mtz(hklin, prefix):
+  print("Got here")
+  result = {
+    "hklout": "%s.mtz" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  utils.run("cif2mtz", [
+    "hklin", hklin,
+    "hklout", result["hklout"],
+  ], [
+    "END"
+  ], stdout=result["stdout"], stderr=result["stderr"])
+  if not os.path.exists(result["hklout"]):
+    return { "error": "No MTZ file produced" }
+  with open(result["stderr"]) as f:
+    for line in f:
+      if line[:8] == "cif2mtz:":
+        return { "error": line[8:].strip() }
+  return result
 
 def combine_mtz(prefix, *columns):
   """Combine columns from multiple MTZ files with cmtzjoin"""
@@ -31,7 +37,7 @@ def combine_mtz(prefix, *columns):
   args = ["-mtzout", result["hklout"]]
   for col in columns:
     args.extend(["-mtzin", col[0], "-colin", col[1], "-colout", col[2]])
-  _run("cmtzjoin", args, stdout=result["stdout"], stderr=result["stderr"])
+  utils.run("cmtzjoin", args, stdout=result["stdout"], stderr=result["stderr"])
   if not os.path.exists(result["hklout"]):
     return { "error": "No reflection data produced" }
   return result
@@ -43,7 +49,7 @@ def compare_phases(hklin, fo, wrk_hl, ref_hl, prefix):
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
-  _run("cphasematch", [
+  utils.run("cphasematch", [
     "-mtzin", hklin,
     "-colin-fo", fo,
     "-colin-hl-1", wrk_hl,
@@ -79,7 +85,7 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
   ]
   for atom in atom_counts:
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, atom_counts[atom]))
-  _run("phaser", stdin=keywords, stdout=result["stdout"], stderr=result["stderr"])
+  utils.run("phaser", stdin=keywords, stdout=result["stdout"], stderr=result["stderr"])
   if not os.path.exists(result["xyzout"]):
     with open(result["stdout"]) as f: log = f.read()
     if not "EXIT STATUS:" in log:
@@ -108,7 +114,7 @@ def refine(hklin, xyzin, prefix, cycles=10):
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
-  _run("refmac5", [
+  utils.run("refmac5", [
     "HKLIN", hklin,
     "XYZIN", xyzin,
     "HKLOUT", result["hklout"],
@@ -143,7 +149,7 @@ def structural_homologues(xyzin, chain, prefix, archive, threads="auto"):
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
-  _run("gesamt", [
+  utils.run("gesamt", [
     xyzin, "-s", "//%s" % chain,
     "-archive", archive,
     "-nthreads=%s" % threads,
@@ -160,7 +166,7 @@ def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
-  _run("gesamt", [
+  utils.run("gesamt", [
     xyzin1, "-s", "//%s" % chain1,
     xyzin2, "-s", "//%s" % chain2,
     "-o", result["xyzout"],
@@ -190,7 +196,7 @@ def trim_model(model, chain, alignment, prefix):
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
-  _run("phaser.sculptor", ["--stdin"], [
+  utils.run("phaser.sculptor", ["--stdin"], [
     "input {",
     "  model {"
     "    file_name = %s" % model,

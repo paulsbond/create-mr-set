@@ -1,19 +1,8 @@
 #!/usr/bin/python3
 
-def unzip_input():
-  run("gunzip", ["-c", args.pdb], stdout=deposited_pdb())
-  run("gunzip", ["-c", args.sf], stdout=deposited_cif())
-
 def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
   run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
-
-def convert_to_mtz():
-  run("cif2mtz", [
-    "hklin", no_symm_cif(),
-    "hklout", cif2mtz_mtz(),
-  ], ["END"])
-  # stderr: "cif2mtz:  No symmetry information in keywords or file!"
 
 def ctruncate(columns):
   arguments = [

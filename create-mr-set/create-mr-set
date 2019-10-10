@@ -10,6 +10,7 @@ import random
 import rcsb
 import seqtools
 import sys
+import tasks
 import urllib.request
 import utils
 import xml.etree.ElementTree as ET
@@ -32,9 +33,9 @@ def add_optional_arguments(parser):
   optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
   optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=10, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=5, help="Number of resolution bins (default: 10)") # TODO: Change back to default
-  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")
+  optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)")  # TODO: Change back to default
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
@@ -209,11 +210,30 @@ def get_sequences(structures):
 
 def make_directory(structure):
   os.mkdir(structure.id)
+  return structure
+
+def unzip_input_files(structure):
+  structure.paths["deposited_pdb"] = os.path.join(structure.id, "%s.pdb" % structure.id)
+  structure.paths["deposited_cif"] = os.path.join(structure.id, "%s-sf.cif" % structure.id)
+  utils.run("gunzip", ["-c", structure.paths["gzipped_pdb_coords"]], stdout=structure.paths["deposited_pdb"])
+  utils.run("gunzip", ["-c", structure.paths["gzipped_pdb_sfs"]], stdout=structure.paths["deposited_cif"])
+  return structure
+
+def convert_to_mtz(structure):
+  prefix = os.path.join(structure.id, "cif2mtz")
+  print(structure.paths)
+  result = tasks.cif2mtz(structure.paths["deposited_cif"], prefix)
+  if "error" in result: structure.error = result["error"]
+  return structure
 
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
-  utils.parallel(title="Making directories", func=make_directory,
-    items=structures.values(), processes=args.jobs)
+  utils.parallel("Making directories", make_directory, structures, args.jobs)
+  print("")
+  utils.parallel("Unzipping input files", unzip_input_files, structures, args.jobs)
+  print("")
+  convert_to_mtz(list(structures.values())[0])
+  # utils.parallel(title="Converting to MTZ", convert_to_mtz, structures, args.jobs)
   print("")
   pass
 
@@ -228,6 +248,9 @@ if __name__ == "__main__":
   print("XXXX")
   print("")
   print("Time: %s\n" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+  if "CCP4" not in os.environ:
+    sys.exit("Please setup the CCP4 environment")
 
   args = parse_args()
   structures = get_structures()
