@@ -1,3 +1,4 @@
+import multiprocessing
 import sys
 
 class ProgressBar:
@@ -33,3 +34,14 @@ class ProgressBar:
     if sys.stdout.isatty():
       print("")
     self.active = False
+
+def parallel(title, func, items, processes=None):
+  progress_bar = ProgressBar(title, len(items))
+  def callback(x):
+    progress_bar.increment()
+  pool = multiprocessing.Pool(processes)
+  for item in items:
+    pool.apply_async(func, args=(item,), callback=callback)
+  pool.close()
+  pool.join()
+  progress_bar.finish()

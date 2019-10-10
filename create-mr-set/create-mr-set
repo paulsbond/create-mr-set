@@ -4,7 +4,6 @@ import argparse
 import Bio.SeqIO
 import datetime
 import gzip
-import logging
 import multiprocessing
 import os
 import random
@@ -12,6 +11,7 @@ import rcsb
 import seqtools
 import sys
 import urllib.request
+import utils
 import xml.etree.ElementTree as ET
 
 ## ARGUMENTS
@@ -25,7 +25,7 @@ def add_required_arguments(parser):
 def add_optional_arguments(parser):
   optional = parser.add_argument_group("Optional arguments")
   optional.add_argument("--help", action="help", help="Show this help message and exit")
-  optional.add_argument("--jobs", type=int, metavar="N", default=1, help="Number of CPU threads to use (default: 1)")
+  optional.add_argument("--jobs", metavar="N", default="auto", help="Number of CPU threads to use (default: auto)")
   optional.add_argument("--model-model-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
   optional.add_argument("--model-model-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
   optional.add_argument("--model-target-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
@@ -45,6 +45,8 @@ def add_optional_arguments(parser):
 
 def add_calculated_arguments(args):
   args.res_step = (args.res_max - args.res_min) / args.res_bins
+  args.jobs = os.cpu_count() if args.jobs == "auto" else int(args.jobs)
+  args.jobs = max(1, min(args.jobs, os.cpu_count()))
 
 def parse_args():
   description = "Creates a new molecular replacement test set."
@@ -126,7 +128,7 @@ def choose_structures(structures):
   for res_bin in res_bins:
     title = "Choosing %.2f-%.2fA structures (%d to choose from)" % (
       res_bin.min_res, res_bin.max_res, len(res_bin.structures))
-    progress_bar = logging.ProgressBar(title, args.num_structures)
+    progress_bar = utils.ProgressBar(title, args.num_structures)
     random.shuffle(res_bin.structures)
     num_checked = 0
     num_missing_files = 0
@@ -205,18 +207,13 @@ def get_sequences(structures):
 
 ## PREPARE STRUCTURE DATA ##
 
-def parallel(title, func, items):
-  progress_bar = logging.ProgressBar(title, len(items))
-  def meta_func(item):
-    func(item)
-    progress_bar.increment()
-  pool = multiprocessing.Pool(args.jobs)
-  pool.map(meta_func, items)
-  progress_bar.finish()
+def make_directory(structure):
+  os.mkdir(structure.id)
 
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
-  parallel("Making directories", os.mkdir, structures)
+  utils.parallel(title="Making directories", func=make_directory,
+    items=structures.values(), processes=args.jobs)
   print("")
   pass
 
@@ -235,7 +232,7 @@ if __name__ == "__main__":
   args = parse_args()
   structures = get_structures()
   chosen = choose_structures(structures)
-  get_sequences(chosen)
+  # get_sequences(chosen)
   prepare_structure_data(chosen)
 
   print("------------------")
