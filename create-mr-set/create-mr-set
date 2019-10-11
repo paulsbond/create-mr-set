@@ -35,8 +35,8 @@ def add_optional_arguments(parser):
   optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
   optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+  optional.add_argument("--num-structures", type=int, metavar="N", default=1, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=1, help="Number of resolution bins (default: 10)") # TODO: Change back to default
   optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)")  # TODO: Change back to default
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
@@ -271,13 +271,20 @@ def convert_amplitudes(structure):
     structure.hkl = result["hklout"]
   return structure
 
+def add_freer_flag(structure):
+  prefix = os.path.join(structure.id, "freerflag")
+  result = tasks.add_freer_flag(structure.hkl, prefix)
+  structure.hkl = result["hklout"]
+  return structure
+
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
   utils.parallel("Unzipping input files", unzip_input_files, structures, args.jobs)
   utils.parallel("Converting to MTZ", convert_to_mtz, structures, args.jobs)
   utils.remove_errors(structures)
   utils.parallel("Converting amplitudes", convert_amplitudes, structures, args.jobs)
-  #convert_amplitudes(list(structures.values())[0])
+  utils.parallel("Adding free-R flags", add_freer_flag, structures, args.jobs)
+  # add_freer_flag(list(structures.values())[0])
   print("")
 
 ## MAIN

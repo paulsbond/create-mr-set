@@ -4,12 +4,6 @@ def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
   run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
 
-def add_freeflag():
-  run("freerflag", [
-    "hklin", ctruncate_mtz(),
-    "hklout", freerflag_mtz()
-  ], ["END"])
-
 def rename_column_labels(f, sigf):
   run("cad", [
     "hklin1", freerflag_mtz(),

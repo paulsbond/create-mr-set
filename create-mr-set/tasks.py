@@ -6,6 +6,20 @@ import utils
 import uuid
 import xml.etree.ElementTree as ET
 
+def add_freer_flag(hklin, prefix):
+  result = {
+    "hklout": "%s.mtz" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  utils.run("freerflag", [
+    "hklin", hklin,
+    "hklout", result["hklout"],
+  ], [
+    "END"
+  ], stdout=result["stdout"], stderr=result["stderr"])
+  return result
+
 def cif2mtz(hklin, prefix):
   result = {
     "hklout": "%s.mtz" % prefix,
