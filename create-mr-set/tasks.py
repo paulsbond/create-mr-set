@@ -190,6 +190,27 @@ def refine(hklin, xyzin, prefix, cycles=10):
   return result
 
 
+def select_and_rename_columns(hklin, colin, colout, prefix):
+  result = {
+    "hklout": "%s.mtz" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  labi = " ".join("E%d=%s" % (i+1, colin[i]) for i in range(len(colin)))
+  labo = " ".join("E%d=%s" % (i+1, colout[i]) for i in range(len(colout)))
+  utils.run("cad", [
+    "hklin1", hklin,
+    "hklout", result["hklout"]
+  ], [
+    "LABI FILE_NUMBER 1 %s" % labi,
+    "XNAME FILE_NUMBER 1 ALL=",
+    "DNAME FILE_NUMBER 1 ALL=",
+    "LABO FILE_NUMBER 1 %s" % labo,
+    "END",
+  ], stdout=result["stdout"], stderr=result["stderr"])
+  return result
+
+
 def structural_homologues(xyzin, chain, prefix, archive, threads="auto"):
   """Search for structural homologues with a GESAMT achrive search"""
   result = {

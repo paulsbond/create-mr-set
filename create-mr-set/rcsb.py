@@ -10,6 +10,7 @@ class _Structure:
     self.rwork = float(row["rWork"])
     self.rfree = float(row["rFree"])
     self.chains = {}
+    self.jobs = {}
     self.metadata = {
       "reported_resolution": self.resolution,
       "reported_rwork": self.rwork,

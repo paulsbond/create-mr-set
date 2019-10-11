@@ -254,27 +254,34 @@ def unzip_input_files(structure):
   return structure
 
 def convert_to_mtz(structure):
+  hklin = structure.paths["deposited_cif"]
   prefix = os.path.join(structure.id, "cif2mtz")
-  result = tasks.cif2mtz(structure.paths["deposited_cif"], prefix)
-  if "error" in result:
-    structure.add_metadata("error", result["error"])
-  else:
-    structure.hkl = result["hklout"]
+  result = tasks.cif2mtz(hklin, prefix)
+  structure.jobs["cif2mtz"] = result
   return structure
 
 def convert_amplitudes(structure):
+  hklin = structure.jobs["cif2mtz"]["hklout"]
+  seqin = structure.paths["deposited_seq"]
   prefix = os.path.join(structure.id, "ctruncate")
-  result = tasks.convert_amplitudes(structure.hkl, structure.paths["deposited_seq"], prefix)
-  if "error" in result:
-    structure.add_metadata("error", result["error"])
-  else:
-    structure.hkl = result["hklout"]
+  result = tasks.convert_amplitudes(hklin, seqin, prefix)
+  structure.jobs["ctruncate"] = result
   return structure
 
 def add_freer_flag(structure):
+  hklin = structure.jobs["ctruncate"]["hklout"]
   prefix = os.path.join(structure.id, "freerflag")
-  result = tasks.add_freer_flag(structure.hkl, prefix)
-  structure.hkl = result["hklout"]
+  result = tasks.add_freer_flag(hklin, prefix)
+  structure.jobs["freerflag"] = result
+  return structure
+
+def rename_columns(structure):
+  hklin = structure.jobs["freerflag"]["hklout"]
+  colin = ["FreeR_flag"] + structure.jobs["ctruncate"]["colout"]
+  colout = ["FREE", "FP", "SIGFP"]
+  prefix = os.path.join(structure.id, "cad")
+  result = tasks.select_and_rename_columns(hklin, colin, colout, prefix)
+  structure.jobs["cad"] = result
   return structure
 
 def prepare_structure_data(structures):
@@ -283,8 +290,10 @@ def prepare_structure_data(structures):
   utils.parallel("Converting to MTZ", convert_to_mtz, structures, args.jobs)
   utils.remove_errors(structures)
   utils.parallel("Converting amplitudes", convert_amplitudes, structures, args.jobs)
+  utils.remove_errors(structures)
   utils.parallel("Adding free-R flags", add_freer_flag, structures, args.jobs)
-  # add_freer_flag(list(structures.values())[0])
+  utils.remove_errors(structures)
+  rename_columns(list(structures.values())[0])
   print("")
 
 ## MAIN

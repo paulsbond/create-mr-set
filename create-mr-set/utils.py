@@ -63,5 +63,8 @@ def parallel(title, func, structures, processes=None):
 
 def remove_errors(structures):
   for structureId, structure in list(structures.items()):
-    if "error" in structure.metadata:
-      del structures[structureId]
+    for jobId in structure.jobs:
+      if "error" in structure.jobs[jobId]:
+        message = "%s: %s" % (jobId, structure.jobs[jobId]["error"])
+        structure.add_metadata("error", message)
+        del structures[structureId]

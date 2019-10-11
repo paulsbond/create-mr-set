@@ -4,39 +4,6 @@ def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
   run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
 
-def rename_column_labels(f, sigf):
-  run("cad", [
-    "hklin1", freerflag_mtz(),
-    "hklout", cad_mtz()
-  ], [
-    "LABI FILE_NUMBER 1 E1=FreeR_flag E2=%s E3=%s" % (f, sigf),
-    "XNAME FILE_NUMBER 1 ALL=",
-    "DNAME FILE_NUMBER 1 ALL=",
-    "LABO FILE_NUMBER 1 E1=FREE E2=FP E3=SIGFP",
-    "END",
-  ])
-
-def standardise_mtz():
-  f = clipper.CCP4MTZfile()
-  f.open_read(cif2mtz_mtz())
-  labels = [str(l).split()[0].split("/")[-1] for l in f.column_labels()]
-  anomalous = False
-  if all(l in labels for l in ["FP", "SIGFP"]):
-    ctruncate(["FP", "SIGFP"])
-  elif all(l in labels for l in ["I", "SIGI"]):
-    ctruncate(["I", "SIGI"])
-  elif all(l in labels for l in ["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"]):
-    ctruncate(["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"])
-    anomalous = True
-  elif all(l in labels for l in ["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"]):
-    ctruncate(["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"])
-    anomalous = True
-  else:
-    sys.exit("Can't find columns to convert to F,SIGF: [%s]" % " ".join(labels))
-  add_freeflag()
-  if anomalous: rename_column_labels("FMEAN", "SIGFMEAN")
-  else: rename_column_labels("F", "SIGF")
-
 def remove_unl_residues():
   shutil.copy(deposited_pdb(), no_unl_pdb())
   run("sed", ["-i", "/^HET.*UNL/d", no_unl_pdb()])
