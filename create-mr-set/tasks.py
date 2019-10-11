@@ -2,6 +2,7 @@ import gemmi
 import os
 import pdbtools
 import re
+import shutil
 import utils
 import uuid
 import xml.etree.ElementTree as ET
@@ -187,6 +188,17 @@ def refine(hklin, xyzin, prefix, cycles=10):
   result["final_rwork"] = float(rworks[-1].text)
   result["initial_rfree"] = float(rfrees[0].text)
   result["initial_rwork"] = float(rworks[0].text)
+  return result
+
+
+def remove_unl_residues(xyzin, prefix):
+  result = {
+    "xyzout": "%s.pdb" % prefix
+  }
+  shutil.copy(xyzin, result["xyzout"])
+  utils.run("sed", ["-i", "/^HET.*UNL/d", result["xyzout"]])
+  utils.run("sed", ["-i", "/^ATOM.*UNL/d", result["xyzout"]])
+  utils.run("sed", ["-i", "/^REMARK 500.*UNL/d", result["xyzout"]])
   return result
 
 

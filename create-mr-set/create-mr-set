@@ -284,16 +284,26 @@ def rename_columns(structure):
   structure.jobs["cad"] = result
   return structure
 
+def remove_unl_residues(structure):
+  xyzin = structure.paths["deposited_pdb"]
+  prefix = os.path.join(structure.id, "no_unl")
+  result = tasks.remove_unl_residues(xyzin, prefix)
+  structure.jobs["no_unl"] = result
+  return structure
+
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
-  utils.parallel("Unzipping input files", unzip_input_files, structures, args.jobs)
-  utils.parallel("Converting to MTZ", convert_to_mtz, structures, args.jobs)
-  utils.remove_errors(structures)
-  utils.parallel("Converting amplitudes", convert_amplitudes, structures, args.jobs)
-  utils.remove_errors(structures)
-  utils.parallel("Adding free-R flags", add_freer_flag, structures, args.jobs)
-  utils.remove_errors(structures)
-  rename_columns(list(structures.values())[0])
+  steps = [
+    ("Unzipping input files", unzip_input_files),
+    ("Converting to MTZ", convert_to_mtz),
+    ("Converting amplitudes", convert_amplitudes),
+    ("Adding free-R flags", add_freer_flag),
+    ("Renaming columns", rename_columns),
+    ("Removing UNL residues", remove_unl_residues),
+  ]
+  for title, func in steps:
+    utils.parallel(title, func, structures, args.jobs)
+  # rename_columns(list(structures.values())[0])
   print("")
 
 ## MAIN
