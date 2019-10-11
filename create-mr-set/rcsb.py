@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import urllib.request
 
@@ -9,6 +10,17 @@ class _Structure:
     self.rwork = float(row["rWork"])
     self.rfree = float(row["rFree"])
     self.chains = {}
+    self.metadata = {
+      "reported_resolution": self.resolution,
+      "reported_rwork": self.rwork,
+      "reported_rfree": self.rfree,
+    }
+
+  def add_metadata(self, key, value):
+    self.metadata[key] = value
+    path = os.path.join(self.id, "metadata.json")
+    with open(path, "w") as f:
+      json.dump(self.metadata, f, sort_keys=True, indent=2)
 
 class _Chain:
   def __init__(self, row):

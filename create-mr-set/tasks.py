@@ -7,7 +7,6 @@ import uuid
 import xml.etree.ElementTree as ET
 
 def cif2mtz(hklin, prefix):
-  print("Got here")
   result = {
     "hklout": "%s.mtz" % prefix,
     "stdout": "%s.log" % prefix,

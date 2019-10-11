@@ -163,6 +163,8 @@ def choose_structures(structures):
   chosen = {s.id: s for r in res_bins for s in r.chosen}
   if len(chosen) < 1:
     sys.exit("ERROR: No structures chosen")
+  for s in chosen.values():
+    os.mkdir(s.id)
   return chosen
 
 ## GET SEQUENCES
@@ -186,31 +188,38 @@ def extract_sequences(structures):
         chain = structure.chains[chainId]
         chain.seq = str(record.seq)
 
-def remove_duplicate_chains(structures):
-  print("Removing duplicate sequences ...")
-  for structure in structures.values():
-    seq_chain_dict = {}
-    for chainId in sorted(structure.chains):
-      chain = structure.chains[chainId]
-      if chain.seq not in seq_chain_dict:
-        chain.copies = 1
-        seq_chain_dict[chain.seq] = chain
-      else:
-        seq_chain_dict[chain.seq].copies += 1
-        del structure.chains[chainId]
+def remove_duplicate_chains(structure):
+  seq_chain_dict = {}
+  for chainId in sorted(structure.chains):
+    chain = structure.chains[chainId]
+    if chain.seq not in seq_chain_dict:
+      chain.copies = 1
+      seq_chain_dict[chain.seq] = chain
+    else:
+      seq_chain_dict[chain.seq].copies += 1
+      del structure.chains[chainId]
+  return structure
+
+def add_chains_metadata(structure):
+  chains = {}
+  for chainId in sorted(structure.chains):
+    chain = structure.chains[chainId]
+    chains[chainId] = {
+      "length": len(chain.seq),
+      "copies": chain.copies
+    }
+  structure.add_metadata("chains", chains)
+  return structure
 
 def get_sequences(structures):
   print("## GETTING FULL SEQUENCES ##\n")
   download_sequences(structures)
   extract_sequences(structures)
-  remove_duplicate_chains(structures)
+  utils.parallel("Removing duplicate chains", remove_duplicate_chains, structures, args.jobs)
+  utils.parallel("Adding metadata", add_chains_metadata, structures, args.jobs)
   print("")
 
 ## PREPARE STRUCTURE DATA ##
-
-def make_directory(structure):
-  os.mkdir(structure.id)
-  return structure
 
 def unzip_input_files(structure):
   structure.paths["deposited_pdb"] = os.path.join(structure.id, "%s.pdb" % structure.id)
@@ -221,21 +230,16 @@ def unzip_input_files(structure):
 
 def convert_to_mtz(structure):
   prefix = os.path.join(structure.id, "cif2mtz")
-  print(structure.paths)
   result = tasks.cif2mtz(structure.paths["deposited_cif"], prefix)
-  if "error" in result: structure.error = result["error"]
+  if "error" in result: structure.add_metadata("error", result["error"])
   return structure
 
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
-  utils.parallel("Making directories", make_directory, structures, args.jobs)
-  print("")
   utils.parallel("Unzipping input files", unzip_input_files, structures, args.jobs)
+  utils.parallel("Converting to MTZ", convert_to_mtz, structures, args.jobs)
+  utils.remove_errors(structures)
   print("")
-  convert_to_mtz(list(structures.values())[0])
-  # utils.parallel(title="Converting to MTZ", convert_to_mtz, structures, args.jobs)
-  print("")
-  pass
 
 ## MAIN
 

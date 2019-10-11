@@ -60,3 +60,8 @@ def parallel(title, func, structures, processes=None):
   pool.close()
   pool.join()
   progress_bar.finish()
+
+def remove_errors(structures):
+  for structureId, structure in list(structures.items()):
+    if "error" in structure.metadata:
+      del structures[structureId]
