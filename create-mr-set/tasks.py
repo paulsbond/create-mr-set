@@ -1,4 +1,4 @@
-import Bio.SeqIO
+import gemmi
 import os
 import pdbtools
 import re
@@ -25,6 +25,7 @@ def cif2mtz(hklin, prefix):
       if line[:8] == "cif2mtz:":
         return { "error": line[8:].strip() }
   return result
+
 
 def combine_mtz(prefix, *columns):
   """Combine columns from multiple MTZ files with cmtzjoin"""
@@ -61,6 +62,40 @@ def compare_phases(hklin, fo, wrk_hl, ref_hl, prefix):
         values = next(f).split()
         result["mean_phase_error"] = float(values[headers.index("w1<dphi>")])
         result["f_map_correlation"] = float(values[headers.index("wFcorr")])
+  return result
+
+
+def convert_amplitudes(hklin, seqin, prefix):
+  result = {
+    "hklout": "%s.mtz" % prefix,
+    "stdout": "%s.log" % prefix,
+    "stderr": "%s.err" % prefix,
+  }
+  mtz = gemmi.read_mtz_file(hklin)
+  labels = [col.label for col in mtz.columns]
+  column_sets = [
+    ["FP", "SIGFP"],
+    ["I", "SIGI"],
+    ["F(+)", "SIGF(+)", "F(-)", "SIGF(-)"],
+    ["I(+)", "SIGI(+)", "I(-)", "SIGI(-)"],
+  ]
+  columns = next((s for s in column_sets if all(l in labels for l in s)), None)
+  if columns is None:
+    return { "error": "Can't find columns to convert to F,SIGF" }
+  arguments = [
+    "-hklin", hklin,
+    "-seqin", seqin,
+    "-hklout", result["hklout"],
+  ]
+  if len(columns) == 2:
+    arguments.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
+    result["colout"] = ["F", "SIGF"]
+  else:
+    arguments.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
+    result["colout"] = ["FMEAN", "SIGFMEAN"]
+  if columns[0][0] == "F":
+    arguments.append("-amplitudes")
+  utils.run("ctruncate", arguments, stdout=result["stdout"], stderr=result["stderr"])
   return result
 
 

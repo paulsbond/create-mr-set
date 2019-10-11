@@ -21,7 +21,7 @@ class ProgressBar:
   def draw(self):
     hashes = "#" * round(self.done / self.total * 60)
     dashes = "-" * (60 - len(hashes))
-    bar = "Progress |%s%s| %d/%d" % (hashes, dashes, self.done, self.total)
+    bar = "|%s%s| %d/%d" % (hashes, dashes, self.done, self.total)
     if sys.stdout.isatty():
       if self.active:
         bar = "\r" + bar

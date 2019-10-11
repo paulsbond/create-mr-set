@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import Bio.Seq
 import Bio.SeqIO
+import Bio.SeqRecord
 import datetime
 import gzip
 import multiprocessing
@@ -188,6 +190,22 @@ def extract_sequences(structures):
         chain = structure.chains[chainId]
         chain.seq = str(record.seq)
 
+def write_sequence(structure, name, path):
+  records = []
+  for chainId in structure.chains:
+    chain = structure.chains[chainId]
+    record = Bio.SeqRecord.SeqRecord(Bio.Seq.Seq(chain.seq),
+      id="%s:%s" % (structure.id, chainId), description="")
+    records.append(record)
+  structure.paths[name] = path
+  Bio.SeqIO.write(records, path, "fasta")
+  return structure
+
+def write_deposited_sequence(structure):
+  path = os.path.join(structure.id, "%s.fasta" % structure.id)
+  structure = write_sequence(structure, "deposited_seq", path)
+  return structure
+
 def remove_duplicate_chains(structure):
   seq_chain_dict = {}
   for chainId in sorted(structure.chains):
@@ -198,6 +216,11 @@ def remove_duplicate_chains(structure):
     else:
       seq_chain_dict[chain.seq].copies += 1
       del structure.chains[chainId]
+  return structure
+
+def write_unique_sequence(structure):
+  path = os.path.join(structure.id, "unique.fasta")
+  structure = write_sequence(structure, "unique_seq", path)
   return structure
 
 def add_chains_metadata(structure):
@@ -215,8 +238,10 @@ def get_sequences(structures):
   print("## GETTING FULL SEQUENCES ##\n")
   download_sequences(structures)
   extract_sequences(structures)
+  utils.parallel("Writing deposited sequences", write_deposited_sequence, structures, args.jobs)
   utils.parallel("Removing duplicate chains", remove_duplicate_chains, structures, args.jobs)
-  utils.parallel("Adding metadata", add_chains_metadata, structures, args.jobs)
+  utils.parallel("Writing unique sequences", write_unique_sequence, structures, args.jobs)
+  utils.parallel("Writing metadata", add_chains_metadata, structures, args.jobs)
   print("")
 
 ## PREPARE STRUCTURE DATA ##
@@ -231,7 +256,19 @@ def unzip_input_files(structure):
 def convert_to_mtz(structure):
   prefix = os.path.join(structure.id, "cif2mtz")
   result = tasks.cif2mtz(structure.paths["deposited_cif"], prefix)
-  if "error" in result: structure.add_metadata("error", result["error"])
+  if "error" in result:
+    structure.add_metadata("error", result["error"])
+  else:
+    structure.hkl = result["hklout"]
+  return structure
+
+def convert_amplitudes(structure):
+  prefix = os.path.join(structure.id, "ctruncate")
+  result = tasks.convert_amplitudes(structure.hkl, structure.paths["deposited_seq"], prefix)
+  if "error" in result:
+    structure.add_metadata("error", result["error"])
+  else:
+    structure.hkl = result["hklout"]
   return structure
 
 def prepare_structure_data(structures):
@@ -239,6 +276,8 @@ def prepare_structure_data(structures):
   utils.parallel("Unzipping input files", unzip_input_files, structures, args.jobs)
   utils.parallel("Converting to MTZ", convert_to_mtz, structures, args.jobs)
   utils.remove_errors(structures)
+  utils.parallel("Converting amplitudes", convert_amplitudes, structures, args.jobs)
+  #convert_amplitudes(list(structures.values())[0])
   print("")
 
 ## MAIN
@@ -259,7 +298,7 @@ if __name__ == "__main__":
   args = parse_args()
   structures = get_structures()
   chosen = choose_structures(structures)
-  # get_sequences(chosen)
+  get_sequences(chosen)
   prepare_structure_data(chosen)
 
   print("------------------")

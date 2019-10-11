@@ -4,20 +4,6 @@ def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
   run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
 
-def ctruncate(columns):
-  arguments = [
-    "-hklin", cif2mtz_mtz(),
-    "-hklout", ctruncate_mtz(),
-    "-seqin", args.seq,
-  ]
-  if len(columns) == 2:
-    arguments.extend(["-colin", "/*/*/[%s]" % ",".join(columns)])
-  else:
-    arguments.extend(["-colano", "/*/*/[%s]" % ",".join(columns)])
-  if columns[0][0] == "F":
-    arguments.append("-amplitudes")
-  run("ctruncate", arguments)
-
 def add_freeflag():
   run("freerflag", [
     "hklin", ctruncate_mtz(),
