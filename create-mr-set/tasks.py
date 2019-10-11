@@ -176,8 +176,9 @@ def refine(hklin, xyzin, prefix, cycles=10):
   ], stdout=result["stdout"], stderr=result["stderr"])
   with open(result["stderr"]) as f:
     for line in f:
-      if "Refmac:  " in line:
-        return { "error": line }
+      line = line.strip()
+      if line[:7] == "Refmac:":
+        return { "error": line[7:].strip() }
   for output in ("hklout", "xyzout", "xmlout"):
     if not os.path.exists(result[output]):
       return { "error": "Output file missing: %s" % result[output] }

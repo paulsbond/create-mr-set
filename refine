@@ -4,9 +4,6 @@ def remove_symmetry_number():
   shutil.copy(deposited_cif(), no_symm_cif())
   run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])
 
-def refine_reference():
-  tasks.refine(cad_mtz(), no_unl_pdb(), os.path.join(self.id, "reference"))
-
 def join_mtz_files():
   run("cmtzjoin", [
     "-mtzout", joined_mtz(),

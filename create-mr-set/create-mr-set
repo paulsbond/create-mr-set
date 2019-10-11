@@ -291,19 +291,29 @@ def remove_unl_residues(structure):
   structure.jobs["no_unl"] = result
   return structure
 
+def refine_deposited_structure(structure):
+  hklin = structure.jobs["cad"]["hklout"]
+  xyzin = structure.jobs["no_unl"]["xyzout"]
+  prefix = os.path.join(structure.id, "refmac")
+  result = tasks.refine(hklin, xyzin, prefix)
+  structure.jobs["refmac"] = result
+  return structure
+
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
   steps = [
     ("Unzipping input files", unzip_input_files),
-    ("Converting to MTZ", convert_to_mtz),
+    ("Converting CIF files to MTZ", convert_to_mtz),
     ("Converting amplitudes", convert_amplitudes),
     ("Adding free-R flags", add_freer_flag),
     ("Renaming columns", rename_columns),
     ("Removing UNL residues", remove_unl_residues),
+    ("Refining structures", refine_deposited_structure),
   ]
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)
-  # rename_columns(list(structures.values())[0])
+    utils.remove_errors(structures)
+  # refine_deposited_structure(list(structures.values())[0])
   print("")
 
 ## MAIN
