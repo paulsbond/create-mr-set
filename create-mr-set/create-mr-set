@@ -308,6 +308,7 @@ def prepare_structure_data(structures):
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)
     utils.remove_errors(structures)
+    print("")
   # refine_deposited_structure(list(structures.values())[0])
   print("")
 

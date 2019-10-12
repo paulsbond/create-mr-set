@@ -62,11 +62,18 @@ def parallel(title, func, structures, processes=None):
   progress_bar.finish()
 
 def remove_errors(structures):
+  error_counts = {}
   for structureId, structure in list(structures.items()):
     for jobId in structure.jobs:
       if "error" in structure.jobs[jobId]:
         message = "%s: %s" % (jobId, structure.jobs[jobId]["error"])
+        if message not in error_counts: error_counts[message] = 0
+        error_counts[message] += 1
         structure.add_metadata("error", message)
         del structures[structureId]
+  if len(error_counts) > 0:
+    print("Removed some structures due to errors:")
+    for error in error_counts:
+      print("%s (%d removed)" % (error, error_counts[error]))
   if len(structures) < 1:
     sys.exit("No structures left after removing errors!")
