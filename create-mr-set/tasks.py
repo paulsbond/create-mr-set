@@ -111,6 +111,10 @@ def convert_amplitudes(hklin, seqin, prefix):
   if columns[0][0] == "F":
     arguments.append("-amplitudes")
   utils.run("ctruncate", arguments, stdout=result["stdout"], stderr=result["stderr"])
+  with open(result["stderr"]) as f:
+    line = f.readline().strip()
+    if len(line) > 0:
+      return { "error": line }
   return result
 
 

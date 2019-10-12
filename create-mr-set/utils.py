@@ -68,3 +68,5 @@ def remove_errors(structures):
         message = "%s: %s" % (jobId, structure.jobs[jobId]["error"])
         structure.add_metadata("error", message)
         del structures[structureId]
+  if len(structures) < 1:
+    sys.exit("No structures left after removing errors!")
