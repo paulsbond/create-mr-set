@@ -1,5 +1,0 @@
-#!/usr/bin/python3
-
-def remove_symmetry_number():
-  shutil.copy(deposited_cif(), no_symm_cif())
-  run("sed", ["-i", "/^_symmetry.Int_Tables_number/d", no_symm_cif()])

@@ -1,29 +1,20 @@
+import copy
 import csv
-import json
 import os
 import urllib.request
+
+_structures = None
 
 class _Structure:
   def __init__(self, row):
     self.id = row["structureId"]
     self.resolution = float(row["resolution"])
+    self.rwork = float(row["rWork"])
+    self.rfree = float(row["rFree"])
     self.chains = {}
-    self.jobs = {}
-    self.metadata = {
-      "reported_resolution": self.resolution,
-      "reported_rwork": float(row["rWork"]),
-      "reported_rfree": float(row["rFree"]),
-    }
-
-  def add_metadata(self, key, value):
-    self.metadata[key] = value
-    path = os.path.join(self.id, "metadata.json")
-    with open(path, "w") as f:
-      json.dump(self.metadata, f, sort_keys=True, indent=2)
 
 class _Chain:
-  def __init__(self, structure, row):
-    self.structure = structure
+  def __init__(self, row):
     self.id = row["chainId"]
     self.cluster95 = row["clusterNumber95"]
     self.cluster90 = row["clusterNumber90"]
@@ -33,14 +24,8 @@ class _Chain:
     self.cluster30 = row["clusterNumber30"]
     self.jobs = {}
 
-def download_custom_report(columns, path):
-  print("Downloading custom report ...")
-  url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
-  url += "customReportColumns=%s&" % ",".join(columns)
-  url += "format=csv&service=wsfile"
-  urllib.request.urlretrieve(url, path)
-
-def structures():
+def _get_structures():
+  global _structures
   columns = [
     "experimentalTechnique",
     "resolution",
@@ -56,16 +41,36 @@ def structures():
   ]
   if not os.path.exists("pdb-chains.csv"):
     download_custom_report(columns, "pdb-chains.csv")
-  print("Reading structures from pdb-chains.csv ...")
-  structures = {}
+  _structures = {}
   with open("pdb-chains.csv") as f:
     for row in csv.DictReader(f):
       if any(row[column] == "" for column in columns): continue
       if row["experimentalTechnique"] != "X-RAY DIFFRACTION": continue
       if row["entityMacromoleculeType"] != "Polypeptide(L)": continue
-      structureId = row["structureId"]
-      chainId = row["chainId"]
-      if structureId not in structures:
-        structures[structureId] = _Structure(row)
-      structures[structureId].chains[chainId] = _Chain(structures[structureId], row)
-  return structures
+      structure_id = row["structureId"]
+      chain_id = row["chainId"]
+      if structure_id not in _structures:
+        _structures[structure_id] = _Structure(row)
+      _structures[structure_id].chains[chain_id] = _Chain(row)
+  _structures = structures
+
+def download_custom_report(columns, path):
+  """Download a custom report for all structures in the PDB"""
+  url = "https://www.rcsb.org/pdb/rest/customReport.xml?pdbids=*&"
+  url += "customReportColumns=%s&" % ",".join(columns)
+  url += "format=csv&service=wsfile"
+  urllib.request.urlretrieve(url, path)
+
+def structures():
+  """Get a dictionary of X-ray structures with protein chains"""
+  if _structures is None: _get_structures()
+  return copy.deepcopy(_structures)
+
+def cluster_number(structure_id, chain_id, cluster_level):
+  """Return the cluster number for an individual protein chain"""
+  assert(cluster_level in {95, 90, 70, 50, 40, 30})
+  if _structures is None: _get_structures()
+  if structure_id in _structures:
+    if chain_id in _structures[structure_id].chains:
+      attr = "cluster%d" % cluster_level
+      return getattr(_structures[structure_id].chains[chain_id], attr)

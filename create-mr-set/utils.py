@@ -1,3 +1,5 @@
+import Bio.Seq
+import Bio.SeqIO
 import multiprocessing
 import subprocess
 import sys
@@ -87,3 +89,10 @@ def is_semet(pdbin):
         if line[17:20] == "MET": return False
         if line[17:20] == "MSE": return True
   return False
+
+def uppercase(seqin, seqout):
+  """Transform sequences to uppercase"""
+  records = list(Bio.SeqIO.parse(seqin, "fasta"))
+  for record in records:
+    record.seq = Bio.Seq.Seq(str(record.seq).upper())
+  Bio.SeqIO.write(records, seqout, "fasta")
