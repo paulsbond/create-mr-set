@@ -197,12 +197,12 @@ def write_sequence(structure, name, path):
   Bio.SeqIO.write(records, path, "fasta")
   return structure
 
-def write_deposited_sequence(structure):
+def write_deposited_sequence(key, structure):
   path = os.path.join(structure.id, "%s.fasta" % structure.id)
   structure = write_sequence(structure, "deposited_seq", path)
-  return structure
+  return key, structure
 
-def remove_duplicate_chains(structure):
+def remove_duplicate_chains(key, structure):
   seq_chain_dict = {}
   for chainId in sorted(structure.chains):
     chain = structure.chains[chainId]
@@ -212,14 +212,14 @@ def remove_duplicate_chains(structure):
     else:
       seq_chain_dict[chain.seq].copies += 1
       del structure.chains[chainId]
-  return structure
+  return key, structure
 
-def write_unique_sequence(structure):
+def write_unique_sequence(key, structure):
   path = os.path.join(structure.id, "unique.fasta")
   structure = write_sequence(structure, "unique_seq", path)
-  return structure
+  return key, structure
 
-def add_chains_metadata(structure):
+def add_chains_metadata(key, structure):
   chains = {}
   for chainId in sorted(structure.chains):
     chain = structure.chains[chainId]
@@ -228,7 +228,7 @@ def add_chains_metadata(structure):
       "copies": chain.copies
     }
   structure.add_metadata("chains", chains)
-  return structure
+  return key, structure
 
 def get_sequences(structures):
   print("## GETTING FULL SEQUENCES ##\n")
@@ -242,60 +242,60 @@ def get_sequences(structures):
 
 ## PREPARE STRUCTURE DATA ##
 
-def unzip_input_files(structure):
+def unzip_input_files(key, structure):
   structure.paths["deposited_pdb"] = os.path.join(structure.id, "%s.pdb" % structure.id)
   structure.paths["deposited_cif"] = os.path.join(structure.id, "%s-sf.cif" % structure.id)
   utils.run("gunzip", ["-c", structure.paths["gzipped_pdb_coords"]], stdout=structure.paths["deposited_pdb"])
   utils.run("gunzip", ["-c", structure.paths["gzipped_pdb_sfs"]], stdout=structure.paths["deposited_cif"])
-  return structure
+  return key, structure
 
-def convert_to_mtz(structure):
+def convert_to_mtz(key, structure):
   hklin = structure.paths["deposited_cif"]
   prefix = os.path.join(structure.id, "cif2mtz")
   result = tasks.cif2mtz(hklin, prefix)
   structure.jobs["cif2mtz"] = result
-  return structure
+  return key, structure
 
-def convert_amplitudes(structure):
+def convert_amplitudes(key, structure):
   hklin = structure.jobs["cif2mtz"]["hklout"]
   seqin = structure.paths["deposited_seq"]
   prefix = os.path.join(structure.id, "ctruncate")
   result = tasks.convert_amplitudes(hklin, seqin, prefix)
   structure.jobs["ctruncate"] = result
-  return structure
+  return key, structure
 
-def add_freer_flag(structure):
+def add_freer_flag(key, structure):
   hklin = structure.jobs["ctruncate"]["hklout"]
   prefix = os.path.join(structure.id, "freerflag")
   result = tasks.add_freer_flag(hklin, prefix)
   structure.jobs["freerflag"] = result
-  return structure
+  return key, structure
 
-def rename_columns(structure):
+def rename_columns(key, structure):
   hklin = structure.jobs["freerflag"]["hklout"]
   colin = ["FreeR_flag"] + structure.jobs["ctruncate"]["colout"]
   colout = ["FREE", "FP", "SIGFP"]
   prefix = os.path.join(structure.id, "cad")
   result = tasks.select_and_rename_columns(hklin, colin, colout, prefix)
   structure.jobs["cad"] = result
-  return structure
+  return key, structure
 
-def remove_unl_residues(structure):
+def remove_unl_residues(key, structure):
   xyzin = structure.paths["deposited_pdb"]
   prefix = os.path.join(structure.id, "no_unl")
   result = tasks.remove_unl_residues(xyzin, prefix)
   structure.jobs["no_unl"] = result
-  return structure
+  return key, structure
 
-def refine_deposited_structure(structure):
+def refine_deposited_structure(key, structure):
   hklin = structure.jobs["cad"]["hklout"]
   xyzin = structure.jobs["no_unl"]["xyzout"]
   prefix = os.path.join(structure.id, "refmac")
   result = tasks.refine(hklin, xyzin, prefix)
   structure.jobs["refmac"] = result
-  return structure
+  return key, structure
 
-def add_structure_metadata(structure):
+def add_structure_metadata(key, structure):
   structure.add_metadata("refined_rwork", structure.jobs["refmac"]["final_rwork"])
   structure.add_metadata("refined_rfree", structure.jobs["refmac"]["final_rfree"])
   pdbin = structure.paths["deposited_pdb"]
@@ -305,7 +305,7 @@ def add_structure_metadata(structure):
   structure.add_metadata("spacegroup", mtz.spacegroup.hm)
   structure.add_metadata("resolution", round(mtz.resolution_high(), 2))
   structure.add_metadata("asu_volume", round(mtz.cell.volume / mtz.nsymop))
-  return structure
+  return key, structure
 
 def prepare_structure_data(structures):
   print("## PREPARING STRUCTURE DATA ##\n")
@@ -324,19 +324,32 @@ def prepare_structure_data(structures):
     utils.remove_errors(structures)
   print("")
 
-## STRUCTURAL HOMOLOGUE SEARCH ##
+## FIND HOMOLOGUES ##
 
-def search_for_structual_homologues(structures):
-  print("## SEARCHING FOR STRUCTURAL HOMOLOGUES ##\n")
-  total = len([c for s in structures.values() for c in s.chains])
-  progress_bar = utils.ProgressBar("Performing gesamt searches", total)
+def search_for_homologues(chains):
+  progress_bar = utils.ProgressBar("Performing gesamt searches", len(chains))
+  for chain in chains.values():
+    xyzin = chain.structure.jobs["refmac"]["xyzout"]
+    prefix = os.path.join(structure.id, "chain%s_gesamt" % chain.id)
+    result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
+    chain.jobs["gesamt"] = result
+    progress_bar.increment()
+  print("")
+
+def choose_homologues(key, chain):
+  import time
+  time.sleep(1)
+  return key, chain
+
+def find_homologues(structures):
+  print("## FINDING HOMOLOGUES TO MAKE MR MODELS FROM ##\n")
+  chains = {}
   for structure in structures.values():
-    xyzin = structure.jobs["refmac"]["xyzout"]
     for chain in structure.chains.values():
-      prefix = os.path.join(structure.id, "chain%s_gesamt" % chain.id)
-      result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
-      chain.jobs["gesamt"] = result
-      progress_bar.increment()
+      key = "%s:%s" % (structure.id, chain.id)
+      chains[key] = chain
+  search_for_homologues(chains)
+  utils.parallel("Choosing from gesamt results", choose_homologues, chains, args.jobs)
   print("")
 
 ## MAIN
@@ -355,26 +368,22 @@ if __name__ == "__main__":
     sys.exit("Please setup the CCP4 environment")
 
   args = parse_args()
-  # structures = get_structures()
-  # # structures = choose_structures(structures)
-  # # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
-  # structures = { "1O6A": structures["1O6A"] }
-  # # structures = {
-  # #   "4BHG": structures["4BHG"],
-  # #   "6E9P": structures["6E9P"],
-  # #   "6HTC": structures["6HTC"],
-  # # }
-  # for structure in structures.values():
-  #   os.mkdir(structure.id)
-  #   input_files_exist(structure)
-  # get_sequences(structures)
-  # prepare_structure_data(structures)
-  # search_for_structual_homologues(structures)
-  import pickle
+  structures = get_structures()
+  # structures = choose_structures(structures)
+  # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
+  structures = { "1O6A": structures["1O6A"] }
+  for structure in structures.values():
+    os.mkdir(structure.id)
+    input_files_exist(structure)
+  get_sequences(structures)
+  prepare_structure_data(structures)
+  find_homologues(structures)
+
+  # import pickle
   # with open("structures.pkl", "wb") as f:
   #   pickle.dump(structures, f)
-  with open("structures.pkl", "rb") as f:
-    structures = pickle.load(f)
+  # with open("structures.pkl", "rb") as f:
+  #   structures = pickle.load(f)
 
   print("------------------")
   print("Normal termination")

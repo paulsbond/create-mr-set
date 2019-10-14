@@ -49,14 +49,15 @@ def run(executable, args=[], stdin=[], stdout=None, stderr=None):
     p.stdin.close()
   p.wait()
 
-def parallel(title, func, structures, processes=None):
-  progress_bar = ProgressBar(title, len(structures))
-  def callback(s):
-    structures[s.id] = s
+def parallel(title, func, dictionary, processes=None):
+  progress_bar = ProgressBar(title, len(dictionary))
+  def callback(item):
+    key, value = item
+    dictionary[key] = value
     progress_bar.increment()
   pool = multiprocessing.Pool(processes)
-  for s in structures.values():
-    pool.apply_async(func, args=(s,), callback=callback)
+  for key, value in dictionary.items():
+    pool.apply_async(func, args=(key, value), callback=callback)
   pool.close()
   pool.join()
   progress_bar.finish()

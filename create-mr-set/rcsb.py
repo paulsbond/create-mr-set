@@ -22,7 +22,8 @@ class _Structure:
       json.dump(self.metadata, f, sort_keys=True, indent=2)
 
 class _Chain:
-  def __init__(self, row):
+  def __init__(self, structure, row):
+    self.structure = structure
     self.id = row["chainId"]
     self.cluster95 = row["clusterNumber95"]
     self.cluster90 = row["clusterNumber90"]
@@ -66,5 +67,5 @@ def structures():
       chainId = row["chainId"]
       if structureId not in structures:
         structures[structureId] = _Structure(row)
-      structures[structureId].chains[chainId] = _Chain(row)
+      structures[structureId].chains[chainId] = _Chain(structures[structureId], row)
   return structures
