@@ -35,9 +35,9 @@ def add_optional_arguments(parser):
   optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
   optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=20, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=10, help="Number of resolution bins (default: 10)") # TODO: Change back to default
-  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")  # TODO: Change back to default
+  optional.add_argument("--num-structures", type=int, metavar="N", default=5, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=10, help="Number of resolution bins (default: 10)")
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
@@ -308,7 +308,6 @@ def prepare_structure_data(structures):
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)
     utils.remove_errors(structures)
-    print("")
   # refine_deposited_structure(list(structures.values())[0])
   print("")
 
@@ -329,9 +328,12 @@ if __name__ == "__main__":
 
   args = parse_args()
   structures = get_structures()
-  chosen = choose_structures(structures)
+  # chosen = choose_structures(structures)
+  chosen = { "1O6A": structures["1O6A"] }
   if len(chosen) < 1: sys.exit("ERROR: No structures chosen")
-  for structure in chosen.values(): os.mkdir(structure.id)
+  for structure in chosen.values():
+    os.mkdir(structure.id)
+    input_files_exist(structure)
   get_sequences(chosen)
   prepare_structure_data(chosen)
 
