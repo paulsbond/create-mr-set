@@ -5,8 +5,8 @@ import Bio.Seq
 import Bio.SeqIO
 import Bio.SeqRecord
 import datetime
+import gemmi
 import gzip
-import multiprocessing
 import os
 import random
 import rcsb
@@ -291,7 +291,19 @@ def refine_deposited_structure(structure):
   xyzin = structure.jobs["no_unl"]["xyzout"]
   prefix = os.path.join(structure.id, "refmac")
   result = tasks.refine(hklin, xyzin, prefix)
+  structure.add_metadata("refined_rwork") = result["final_rwork"]
+  structure.add_metadata("refined_rfree") = result["final_rfree"]
   structure.jobs["refmac"] = result
+  return structure
+
+def add_structure_metadata(structure):
+  pdbin = structure.paths["deposited_pdb"]
+  structure.add_metadata("semet", utils.is_semet(pdbin))
+  mtzin = structure.jobs["cad"]["hklout"]
+  mtz = gemmi.read_mtz_file(mtzin)
+  structure.add_metadata("spacegroup", mtz.spacegroup.hm)
+  structure.add_metadata("resolution", mtz.resolution_high())
+  structure.add_metadata("asu_volume", mtz.cell.volume / mtz.nsymop)
   return structure
 
 def prepare_structure_data(structures):
@@ -304,6 +316,7 @@ def prepare_structure_data(structures):
     ("Renaming columns", rename_columns),
     ("Removing UNL residues", remove_unl_residues),
     ("Refining structures", refine_deposited_structure),
+    ("Adding metadata", add_structure_metadata),
   ]
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)

@@ -77,3 +77,12 @@ def remove_errors(structures):
       print("%s (%d removed)" % (error, error_counts[error]))
   if len(structures) < 1:
     sys.exit("No structures left after removing errors!")
+
+def is_semet(pdbin):
+  """Check if a PDB format file is a selenomethione derivative"""
+  with open(pdbin) as f:
+    for line in f:
+      if line[:6] == "ATOM  " or line[:6] == "HETATM":
+        if line[17:20] == "MET": return False
+        if line[17:20] == "MSE": return True
+  return False
