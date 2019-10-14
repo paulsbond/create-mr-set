@@ -24,6 +24,7 @@ def add_required_arguments(parser):
   required.add_argument("--pdb-coords", metavar="DIR", required=True, help="Directory containing divided coordinate files in gzipped PDB format (??/pdb????.ent.gz)")
   required.add_argument("--pdb-sfs", metavar="DIR", required=True, help="Directory containing divided reflection data files in gzipped CIF format (??/r????sf.ent.gz)")
   required.add_argument("--pdb-reports", metavar="DIR", required=True, help="Directory containing divided validation reports in gzipped XML format (??/????/????_validation.xml.gz)")
+  required.add_argument("--gesamt-archive", metavar="DIR", required=True, help="Directory containing a GESAMT archive to search for structural homologues")
 
 def add_optional_arguments(parser):
   optional = parser.add_argument_group("Optional arguments")
@@ -291,12 +292,12 @@ def refine_deposited_structure(structure):
   xyzin = structure.jobs["no_unl"]["xyzout"]
   prefix = os.path.join(structure.id, "refmac")
   result = tasks.refine(hklin, xyzin, prefix)
-  structure.add_metadata("refined_rwork", result["final_rwork"])
-  structure.add_metadata("refined_rfree", result["final_rfree"])
   structure.jobs["refmac"] = result
   return structure
 
 def add_structure_metadata(structure):
+  structure.add_metadata("refined_rwork", structure.jobs["refmac"]["final_rwork"])
+  structure.add_metadata("refined_rfree", structure.jobs["refmac"]["final_rfree"])
   pdbin = structure.paths["deposited_pdb"]
   structure.add_metadata("semet", utils.is_semet(pdbin))
   mtzin = structure.jobs["cad"]["hklout"]
@@ -321,7 +322,21 @@ def prepare_structure_data(structures):
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)
     utils.remove_errors(structures)
-  # refine_deposited_structure(list(structures.values())[0])
+  print("")
+
+## STRUCTURAL HOMOLOGUE SEARCH ##
+
+def search_for_structual_homologues(structures):
+  print("## SEARCHING FOR STRUCTURAL HOMOLOGUES ##\n")
+  total = len([c for s in structures.values() for c in s.chains])
+  progress_bar = utils.ProgressBar("Performing gesamt searches", total)
+  for structure in structures.values():
+    xyzin = structure.jobs["refmac"]["xyzout"]
+    for chain in structure.chains.values():
+      prefix = os.path.join(structure.id, "chain%s_gesamt" % chain.id)
+      result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
+      chain.jobs["gesamt"] = result
+      progress_bar.increment()
   print("")
 
 ## MAIN
@@ -340,15 +355,26 @@ if __name__ == "__main__":
     sys.exit("Please setup the CCP4 environment")
 
   args = parse_args()
-  structures = get_structures()
-  # chosen = choose_structures(structures)
-  chosen = { "1O6A": structures["1O6A"] }
-  if len(chosen) < 1: sys.exit("ERROR: No structures chosen")
-  for structure in chosen.values():
-    os.mkdir(structure.id)
-    input_files_exist(structure)
-  get_sequences(chosen)
-  prepare_structure_data(chosen)
+  # structures = get_structures()
+  # # structures = choose_structures(structures)
+  # # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
+  # structures = { "1O6A": structures["1O6A"] }
+  # # structures = {
+  # #   "4BHG": structures["4BHG"],
+  # #   "6E9P": structures["6E9P"],
+  # #   "6HTC": structures["6HTC"],
+  # # }
+  # for structure in structures.values():
+  #   os.mkdir(structure.id)
+  #   input_files_exist(structure)
+  # get_sequences(structures)
+  # prepare_structure_data(structures)
+  # search_for_structual_homologues(structures)
+  import pickle
+  # with open("structures.pkl", "wb") as f:
+  #   pickle.dump(structures, f)
+  with open("structures.pkl", "rb") as f:
+    structures = pickle.load(f)
 
   print("------------------")
   print("Normal termination")
