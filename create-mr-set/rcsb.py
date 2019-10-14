@@ -7,14 +7,12 @@ class _Structure:
   def __init__(self, row):
     self.id = row["structureId"]
     self.resolution = float(row["resolution"])
-    self.rwork = float(row["rWork"])
-    self.rfree = float(row["rFree"])
     self.chains = {}
     self.jobs = {}
     self.metadata = {
       "reported_resolution": self.resolution,
-      "reported_rwork": self.rwork,
-      "reported_rfree": self.rfree,
+      "reported_rwork": float(row["rWork"]),
+      "reported_rfree": float(row["rFree"]),
     }
 
   def add_metadata(self, key, value):
