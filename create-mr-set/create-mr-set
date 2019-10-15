@@ -9,6 +9,7 @@ import gemmi
 import gzip
 import models
 import os
+import pdbtools
 import random
 import rcsb
 import sys
@@ -405,26 +406,37 @@ def trim_model(key, homologue):
   homologue.jobs["sculptor"] = result
   return key, homologue
 
+def mr(key, homologue):
+  hklin = homologue.chain.structure.jobs["cad"]["hklout"]
+  xyzin = homologue.jobs["sculptor"]["xyzout"]
+  identity = homologue.jobs["gesamt"]["seqid"]
+  prefix = homologue.path("phaser")
+  copies = homologue.chain.metadata["copies"]
+  atom_counts = pdbtools.count_elements(homologue.chain.structure.path("deposited.pdb"))
+  result = tasks.mr(hklin, xyzin, identity, prefix, copies, atom_counts)
+  homologue.jobs["phaser"] = result
+  return key, homologue
+
 def template(key, homologue):
   prefix = homologue.path("template")
   result = tasks.template(prefix)
   homologue.jobs["template"] = result
   return key, homologue
 
-def mr(homologues):
+def prepare_and_do_mr(homologues):
   utils.print_section_title("Preparing Models and Performing Molecular Replacement")
   steps = [
     ("Superposing homologues for sequence alignments", superpose_homologue),
     ("Tranform gesamt alignments to uppercase", uppercase_alignment),
     ("Trimming input models with sculptor", trim_model),
+    ("Performing molecular replacement with phaser", mr)
   ]
   for title, func in steps:
     utils.parallel(title, func, homologues, args.jobs)
     utils.remove_errors(homologues)
   # h = list(homologues.values())[0]
-  # trim_and_mutate(h.id, h)
+  # mr(h.id, h)
 
-  # tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), pdbtools.count_elements())
   # tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   # tasks.combine_mtz(cmtzjoin_mtz(), [
   #   (joined_mtz(), "FP,SIGFP", "FP,SIGFP"),
@@ -475,7 +487,7 @@ if __name__ == "__main__":
     chains = pickle.load(f)
 
   homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values()}
-  mr(homologues)
+  prepare_and_do_mr(homologues)
 
   print("------------------")
   print("Normal termination")
