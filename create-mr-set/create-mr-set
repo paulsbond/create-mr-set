@@ -392,8 +392,23 @@ def superpose_homologue(key, homologue):
 
 def uppercase_alignment(key, homologue):
   seqin = homologue.jobs["gesamt"]["seqout"]
-  seqout = homologue.path("uppercase.seq")
+  seqout = homologue.path("uppercase.fasta")
   utils.transform_sequences_to_uppercase(seqin, seqout)
+  return key, homologue
+
+def trim_model(key, homologue):
+  model = gzipped_coords(homologue.hit_pdb)
+  chain = homologue.hit_chain
+  alignment = homologue.path("uppercase.fasta")
+  prefix = homologue.path("sculptor")
+  result = tasks.trim_model(model, chain, alignment, prefix)
+  homologue.jobs["sculptor"] = result
+  return key, homologue
+
+def template(key, homologue):
+  prefix = homologue.path("template")
+  result = tasks.template(prefix)
+  homologue.jobs["template"] = result
   return key, homologue
 
 def mr(homologues):
@@ -401,20 +416,14 @@ def mr(homologues):
   steps = [
     ("Superposing homologues for sequence alignments", superpose_homologue),
     ("Tranform gesamt alignments to uppercase", uppercase_alignment),
+    ("Trimming input models with sculptor", trim_model),
   ]
   for title, func in steps:
     utils.parallel(title, func, homologues, args.jobs)
     utils.remove_errors(homologues)
   # h = list(homologues.values())[0]
-  # uppercase_alignment(h.id, h)
+  # trim_and_mutate(h.id, h)
 
-  # tasks.post_process_gesamt_alignment(
-  #   alnin=gesamt_fasta(),
-  #   alnout=sculptor_fasta(),
-  #   id1="%s%s" % (args.pdb, args.chain),
-  #   id2="%s%s" % (args.model_pdb, args.model_chain),
-  # )
-  # tasks.trim_model(model_gz(), args.model_chain, sculptor_fasta(), os.path.join(args.dir, "sculptor"))
   # tasks.mr(joined_mtz(), sculptor_pdb(), identity(), os.path.join(args.dir, "phaser"), n_copies(), pdbtools.count_elements())
   # tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
   # tasks.combine_mtz(cmtzjoin_mtz(), [

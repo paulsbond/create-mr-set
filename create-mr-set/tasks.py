@@ -278,7 +278,7 @@ def superpose(xyzin1, chain1, xyzin2, chain2, prefix):
 def trim_model(model, chain, alignment, prefix):
   """Trim a molecular replacement model with SCULPTOR"""
   result = {
-    "xyzout": "%s_%s.pdb" % (prefix, os.path.basename(model).split(".")[0]),
+    "xyzout": "%s_%s.pdb" % (prefix, os.path.basename(model)[:-3]),
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
