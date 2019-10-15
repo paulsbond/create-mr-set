@@ -371,6 +371,7 @@ def choose_hits(key, chain):
         break
   for hit in chosen_hits:
     models.Homologue(hit.pdb, hit.chain, chain)
+  chain.tmp_test_property = "IF I'M STILL CHAINS ARE BEING SAVED IN PARALLEL"
   return key, chain
 
 def find_homologues(structures):
@@ -382,8 +383,24 @@ def find_homologues(structures):
 
 ## MR
 
+def superpose_homologue(key, homologue):
+  return key, homologue
+
 def mr(structures):
   utils.print_section_title("Preparing Models and Performing Molecular Replacement")
+  homologues = {}
+  for structure in structures.values():
+    for chain in structure.chains.values():
+      print(chain.__dict__)
+      for homologue in chain.homologues.values():
+        homologues[homologue.global_id] = homologue
+  steps = [
+    ("Superposing homologues for sequence alignments", superpose_homologue),
+  ]
+  for title, func in steps:
+    utils.parallel(title, func, homologues, args.jobs)
+    # utils.remove_errors(structures) # TODO: Make remove_errors generic
+
   # tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
   # tasks.post_process_gesamt_alignment(
   #   alnin=gesamt_fasta(),
@@ -418,21 +435,24 @@ if __name__ == "__main__":
   if "CCP4" not in os.environ:
     sys.exit("Please setup the CCP4 environment")
 
+  import pickle
   args = parse_args()
-  print("Getting a list of structures from the PDB\n")
-  rcsb_structures = rcsb.structures()
-  # structures = choose_structures(rcsb_structures)
-  # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
-  structures = { "1O6A": models.Structure(rcsb_structures["1O6A"]) }
-  get_sequences(structures)
-  prepare_structure_data(structures)
-  find_homologues(structures)
 
-  # import pickle
-  # with open("structures.pkl", "wb") as f:
+  # print("Getting a list of structures from the PDB\n")
+  # rcsb_structures = rcsb.structures()
+  # # structures = choose_structures(rcsb_structures)
+  # # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
+  # structures = { "1O6A": models.Structure(rcsb_structures["1O6A"]) }
+  # get_sequences(structures)
+
+  # prepare_structure_data(structures)
+  # with open("prepare_structure_data.pkl", "wb") as f:
   #   pickle.dump(structures, f)
-  # with open("structures.pkl", "rb") as f:
-  #   structures = pickle.load(f)
+  with open("prepare_structure_data.pkl", "rb") as f:
+    structures = pickle.load(f)
+
+  # find_homologues(structures)
+  # mr(structures)
 
   print("------------------")
   print("Normal termination")
