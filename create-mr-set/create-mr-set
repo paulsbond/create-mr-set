@@ -125,15 +125,6 @@ def validation_report_okay(structure):
     setattr(structure, key, percentile)
   return True
 
-def init_structure(rcsb_structure):
-  structure = models.Structure(rcsb_structure.id)
-  structure.add_metadata("reported_resolution", rcsb_structure.resolution)
-  structure.add_metadata("reported_rwork", rcsb_structure.rwork)
-  structure.add_metadata("reported_rfree", rcsb_structure.rfree)
-  for chain_id, rcsb_chain, in rcsb_structure.chains.items():
-    chain = models.Chain(chain_id, structure)
-  return structure
-
 def choose_structures(structures):
   utils.print_section_title("Choosing Structures")
   res_bins = assign_resolution_bins(structures)
@@ -163,7 +154,7 @@ def choose_structures(structures):
         num_failed_validation += 1
         passed = False
       if passed:
-        res_bin.chosen.append(init_structure(structure))
+        res_bin.chosen.append(models.Structure(structure))
         chosen_clusters.update(clusters)
         progress_bar.increment()
         if len(res_bin.chosen) == args.num_structures:
@@ -439,7 +430,7 @@ if __name__ == "__main__":
   rcsb_structures = rcsb.structures()
   # structures = choose_structures(rcsb_structures)
   # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
-  structures = { "1O6A": init_structure(rcsb_structures["1O6A"]) }
+  structures = { "1O6A": models.Structure(rcsb_structures["1O6A"]) }
   get_sequences(structures)
   prepare_structure_data(structures)
   find_homologues(structures)

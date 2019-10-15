@@ -23,22 +23,24 @@ class _Base:
     shutil.rmtree(self.directory)
 
 class Structure(_Base):
-  def __init__(self, structure_id):
-    super().__init__(os.path.join("structures", structure_id))
-    self.id = structure_id
-    self.chains = {}
+  def __init__(self, rcsb_structure):
+    self.id = rcsb_structure.id
+    super().__init__(os.path.join("structures", self.id))
+    self.chains = {cid: Chain(cid, self) for cid in rcsb_structure.chains}
+    self.add_metadata("reported_resolution", rcsb_structure.resolution)
+    self.add_metadata("reported_rwork", rcsb_structure.rwork)
+    self.add_metadata("reported_rfree", rcsb_structure.rfree)
 
 class Chain(_Base):
   def __init__(self, chain_id, structure):
-    super().__init__(os.path.join(structure.directory, "chains", chain_id))
     self.id = chain_id
-    self.homologues = {}
+    super().__init__(os.path.join(structure.directory, "chains", self.id))
     self.structure = structure
-    structure.chains[self.id] = self
+    self.homologues = {}
 
 class Homologue(_Base):
   def __init__(self, homologue_id, chain):
-    super().__init__(os.path.join(chain.directory, "homologues", homologue_id))
     self.id = homologue_id
+    super().__init__(os.path.join(chain.directory, "homologues", self.id))
     self.chain = chain
     chain.homologues[self.id] = self
