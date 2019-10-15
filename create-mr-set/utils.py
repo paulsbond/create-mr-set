@@ -66,22 +66,23 @@ def parallel(title, func, dictionary, processes=None):
   pool.join()
   progress_bar.finish()
 
-def remove_errors(structures):
+def remove_errors(model_dictionary):
+  model_type = type(next(iter(model_dictionary.values()))).__name__.lower()
   error_counts = {}
-  for structureId, structure in list(structures.items()):
-    for jobId in structure.jobs:
-      if "error" in structure.jobs[jobId]:
-        message = "%s: %s" % (jobId, structure.jobs[jobId]["error"])
+  for model_id, model in list(model_dictionary.items()):
+    for job_id, result in model.jobs.items():
+      if "error" in result:
+        message = "%s: %s" % (job_id, result["error"])
         if message not in error_counts: error_counts[message] = 0
         error_counts[message] += 1
-        structure.add_metadata("error", message)
-        del structures[structureId]
+        model.add_metadata("error", message)
+        del model_dictionary[model_id]
   if len(error_counts) > 0:
-    print("Removed some structures due to errors:")
+    print("Some %ss were removed due to errors:" % model_type)
     for error in error_counts:
       print("%s (%d removed)" % (error, error_counts[error]))
-  if len(structures) < 1:
-    sys.exit("No structures left after removing errors!")
+  if len(model_dictionary) < 1:
+    sys.exit("No %ss left after removing errors!" % model_type)
 
 def is_semet(pdbin):
   """Check if a PDB format file is a selenomethione derivative"""
@@ -92,7 +93,7 @@ def is_semet(pdbin):
         if line[17:20] == "MSE": return True
   return False
 
-def uppercase(seqin, seqout):
+def transform_sequences_to_uppercase(seqin, seqout):
   """Transform sequences to uppercase"""
   records = list(Bio.SeqIO.parse(seqin, "fasta"))
   for record in records:

@@ -8,7 +8,7 @@ class _Base:
     self.directory = directory
     self.metadata = {}
     self.jobs = {}
-    os.makedirs(self.directory)
+    os.makedirs(self.directory, exist_ok=True)
 
   def path(self, filename):
     return os.path.join(self.directory, filename)
@@ -40,8 +40,8 @@ class Chain(_Base):
 
 class Homologue(_Base):
   def __init__(self, hit_pdb, hit_chain, chain):
-    self.structure_id = hit_pdb
-    self.chain_id = hit_chain
+    self.hit_pdb = hit_pdb
+    self.hit_chain = hit_chain
     self.id = "%s_%s" % (hit_pdb, hit_chain)
     super().__init__(os.path.join(chain.directory, "homologues", self.id))
     self.chain = chain

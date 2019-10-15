@@ -371,37 +371,43 @@ def choose_hits(key, chain):
         break
   for hit in chosen_hits:
     models.Homologue(hit.pdb, hit.chain, chain)
-  chain.tmp_test_property = "IF I'M STILL CHAINS ARE BEING SAVED IN PARALLEL"
   return key, chain
 
-def find_homologues(structures):
+def find_homologues(chains):
   utils.print_section_title("Finding Homologues to Make MR Models From")
-  chains = { c.global_id: c for s in structures.values() for c in s.chains.values() }
   search_for_homologues(chains)
   utils.parallel("Choosing from gesamt results", choose_hits, chains, args.jobs)
-  print("")
 
 ## MR
 
 def superpose_homologue(key, homologue):
+  xyzin1 = homologue.chain.structure.jobs["refmac"]["xyzout"]
+  chain1 = homologue.chain.id
+  xyzin2 = gzipped_coords(homologue.hit_pdb)
+  chain2 = homologue.hit_chain
+  prefix = homologue.path("gesamt")
+  result = tasks.superpose(xyzin1, chain1, xyzin2, chain2, prefix)
+  homologue.jobs["gesamt"] = result
   return key, homologue
 
-def mr(structures):
+def uppercase_alignment(key, homologue):
+  seqin = homologue.jobs["gesamt"]["seqout"]
+  seqout = homologue.path("uppercase.seq")
+  utils.transform_sequences_to_uppercase(seqin, seqout)
+  return key, homologue
+
+def mr(homologues):
   utils.print_section_title("Preparing Models and Performing Molecular Replacement")
-  homologues = {}
-  for structure in structures.values():
-    for chain in structure.chains.values():
-      print(chain.__dict__)
-      for homologue in chain.homologues.values():
-        homologues[homologue.global_id] = homologue
   steps = [
     ("Superposing homologues for sequence alignments", superpose_homologue),
+    ("Tranform gesamt alignments to uppercase", uppercase_alignment),
   ]
   for title, func in steps:
     utils.parallel(title, func, homologues, args.jobs)
-    # utils.remove_errors(structures) # TODO: Make remove_errors generic
+    utils.remove_errors(homologues)
+  # h = list(homologues.values())[0]
+  # uppercase_alignment(h.id, h)
 
-  # tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
   # tasks.post_process_gesamt_alignment(
   #   alnin=gesamt_fasta(),
   #   alnout=sculptor_fasta(),
@@ -444,15 +450,23 @@ if __name__ == "__main__":
   # # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
   # structures = { "1O6A": models.Structure(rcsb_structures["1O6A"]) }
   # get_sequences(structures)
-
   # prepare_structure_data(structures)
-  # with open("prepare_structure_data.pkl", "wb") as f:
-  #   pickle.dump(structures, f)
-  with open("prepare_structure_data.pkl", "rb") as f:
-    structures = pickle.load(f)
 
-  # find_homologues(structures)
-  # mr(structures)
+  # with open("structures.pkl", "wb") as f:
+  #   pickle.dump(structures, f)
+  # with open("structures.pkl", "rb") as f:
+  #   structures = pickle.load(f)
+
+  # chains = {c.global_id: c for s in structures.values() for c in s.chains.values()}
+  # find_homologues(chains)
+
+  # with open("chains.pkl", "wb") as f:
+  #   pickle.dump(chains, f)
+  with open("chains.pkl", "rb") as f:
+    chains = pickle.load(f)
+
+  homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values()}
+  mr(homologues)
 
   print("------------------")
   print("Normal termination")
