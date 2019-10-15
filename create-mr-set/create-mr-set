@@ -11,7 +11,6 @@ import models
 import os
 import random
 import rcsb
-import seqtools
 import sys
 import tasks
 import urllib.request
@@ -37,9 +36,9 @@ def add_optional_arguments(parser):
   optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
   optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=5, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=10, help="Number of resolution bins (default: 10)")
-  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")
+  optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
+  optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
@@ -98,7 +97,7 @@ def gzipped_report(structure):
   return os.path.join(args.pdb_reports, pdb[1:3], pdb, "%s_validation.xml.gz" % pdb)
 
 def input_files_exist(structure):
-  all(os.path.exists(path) for path in {
+  return all(os.path.exists(path) for path in {
     gzipped_coords(structure),
     gzipped_sfs(structure),
     gzipped_report(structure),
@@ -112,7 +111,7 @@ def validation_report_okay(structure):
     "relative-percentile-percent-rama-outliers": "validation_rota",
     "relative-percentile-percent-rota-outliers": "validation_rsrz",
   }
-  path = gzipped_report(structure.id.lower())
+  path = gzipped_report(structure)
   if not os.path.exists(path): return False
   with gzip.open(path) as f:
     content = f.read()
@@ -126,8 +125,17 @@ def validation_report_okay(structure):
     setattr(structure, key, percentile)
   return True
 
+def init_structure(rcsb_structure):
+  structure = models.Structure(rcsb_structure.id)
+  structure.add_metadata("reported_resolution", rcsb_structure.resolution)
+  structure.add_metadata("reported_rwork", rcsb_structure.rwork)
+  structure.add_metadata("reported_rfree", rcsb_structure.rfree)
+  for chain_id, rcsb_chain, in rcsb_structure.chains.items():
+    chain = models.Chain(chain_id, structure)
+  return structure
+
 def choose_structures(structures):
-  print("## CHOOSING STRUCTURES ##\n")
+  utils.print_section_title("Choosing Structures")
   res_bins = assign_resolution_bins(structures)
   chosen_clusters = set()
   cluster_attr = "cluster%d" % args.structure_seqid
@@ -155,7 +163,7 @@ def choose_structures(structures):
         num_failed_validation += 1
         passed = False
       if passed:
-        res_bin.chosen.append(structure)
+        res_bin.chosen.append(init_structure(structure))
         chosen_clusters.update(clusters)
         progress_bar.increment()
         if len(res_bin.chosen) == args.num_structures:
@@ -181,20 +189,20 @@ def download_sequences(structures):
 def extract_sequences(structures):
   print("Extracting sequences ...")
   for record in Bio.SeqIO.parse("sequences.fasta", "fasta"):
-    structureId = record.id[:4]
-    chainId = record.id[5:6]
-    if structureId in structures:
-      structure = structures[structureId]
-      if chainId in structure.chains:
-        chain = structure.chains[chainId]
-        chain.seq = str(record.seq)
+    structure_id = record.id[:4]
+    chain_id = record.id[5:6]
+    if structure_id in structures:
+      structure = structures[structure_id]
+      if chain_id in structure.chains:
+        chain = structure.chains[chain_id]
+        chain.add_metadata("seq", str(record.seq))
+        chain.add_metadata("length", len(chain.metadata["seq"]))
 
 def write_sequence(structure, path):
   records = []
-  for chainId in structure.chains:
-    chain = structure.chains[chainId]
-    record = Bio.SeqRecord.SeqRecord(Bio.Seq.Seq(chain.seq),
-      id="%s:%s" % (structure.id, chainId), description="")
+  for chain in structure.chains.values():
+    record = Bio.SeqRecord.SeqRecord(Bio.Seq.Seq(chain.metadata["seq"]),
+      id="%s:%s" % (structure.id, chain.id), description="")
     records.append(record)
   Bio.SeqIO.write(records, path, "fasta")
   return structure
@@ -204,52 +212,41 @@ def write_deposited_sequence(key, structure):
   return key, structure
 
 def remove_duplicate_chains(key, structure):
-  seq_chain_dict = {}
-  for chainId in sorted(structure.chains):
-    chain = structure.chains[chainId]
-    if chain.seq not in seq_chain_dict:
-      chain.copies = 1
-      seq_chain_dict[chain.seq] = chain
+  seq_copies_dict = {}
+  for chain_id, chain in sorted(structure.chains.items()):
+    if chain.metadata["seq"] not in seq_copies_dict:
+      seq_copies_dict[chain.metadata["seq"]] = 1
     else:
-      seq_chain_dict[chain.seq].copies += 1
-      del structure.chains[chainId]
+      seq_copies_dict[chain.metadata["seq"]] += 1
+      del structure.chains[chain_id]
+      chain.remove_directory()
+  for chain in structure.chains.values():
+    chain.add_metadata("copies", seq_copies_dict[chain.metadata["seq"]])
   return key, structure
 
 def write_unique_sequence(key, structure):
   structure = write_sequence(structure, structure.path("unique.fasta"))
   return key, structure
 
-def add_chains_metadata(key, structure):
-  chains = {}
-  for chainId in sorted(structure.chains):
-    chain = structure.chains[chainId]
-    chains[chainId] = {
-      "length": len(chain.seq),
-      "copies": chain.copies
-    }
-  structure.add_metadata("chains", chains)
-  return key, structure
-
 def get_sequences(structures):
-  print("## GETTING FULL SEQUENCES ##\n")
+  utils.print_section_title("Getting Full Sequences")
   download_sequences(structures)
   extract_sequences(structures)
   utils.parallel("Writing deposited sequences", write_deposited_sequence, structures, args.jobs)
   utils.parallel("Removing duplicate chains", remove_duplicate_chains, structures, args.jobs)
   utils.parallel("Writing unique sequences", write_unique_sequence, structures, args.jobs)
-  utils.parallel("Writing metadata", add_chains_metadata, structures, args.jobs)
   print("")
 
 ## PREPARE STRUCTURE DATA
 
 def unzip_input_files(key, structure):
-  utils.run("gunzip", ["-c", gzipped_coords(structure), stdout=structure.path["deposited.pdb"])
-  utils.run("gunzip", ["-c", gzipped_sfs(structure), stdout=structure.path["deposited.cif"])
+  utils.run("gunzip", ["-c", gzipped_coords(structure)], stdout=structure.path("deposited.pdb"))
+  utils.run("gunzip", ["-c", gzipped_sfs(structure)], stdout=structure.path("deposited.cif"))
   return key, structure
 
 def convert_to_mtz(key, structure):
   hklin = structure.path("deposited.cif")
-  prefix = os.path.join(structure.id, "cif2mtz")
+  prefix = structure.path("cif2mtz")
   result = tasks.cif2mtz(hklin, prefix)
   structure.jobs["cif2mtz"] = result
   return key, structure
@@ -257,14 +254,14 @@ def convert_to_mtz(key, structure):
 def convert_amplitudes(key, structure):
   hklin = structure.jobs["cif2mtz"]["hklout"]
   seqin = structure.path("deposited.fasta")
-  prefix = os.path.join(structure.id, "ctruncate")
+  prefix = structure.path("ctruncate")
   result = tasks.convert_amplitudes(hklin, seqin, prefix)
   structure.jobs["ctruncate"] = result
   return key, structure
 
 def add_freer_flag(key, structure):
   hklin = structure.jobs["ctruncate"]["hklout"]
-  prefix = os.path.join(structure.id, "freerflag")
+  prefix = structure.path("freerflag")
   result = tasks.add_freer_flag(hklin, prefix)
   structure.jobs["freerflag"] = result
   return key, structure
@@ -273,14 +270,14 @@ def rename_columns(key, structure):
   hklin = structure.jobs["freerflag"]["hklout"]
   colin = ["FreeR_flag"] + structure.jobs["ctruncate"]["colout"]
   colout = ["FREE", "FP", "SIGFP"]
-  prefix = os.path.join(structure.id, "cad")
+  prefix = structure.path("cad")
   result = tasks.select_and_rename_columns(hklin, colin, colout, prefix)
   structure.jobs["cad"] = result
   return key, structure
 
 def remove_unl_residues(key, structure):
   xyzin = structure.path("deposited.pdb")
-  prefix = os.path.join(structure.id, "no_unl")
+  prefix = structure.path("no_unl")
   result = tasks.remove_unl_residues(xyzin, prefix)
   structure.jobs["no_unl"] = result
   return key, structure
@@ -288,7 +285,7 @@ def remove_unl_residues(key, structure):
 def refine_deposited_structure(key, structure):
   hklin = structure.jobs["cad"]["hklout"]
   xyzin = structure.jobs["no_unl"]["xyzout"]
-  prefix = os.path.join(structure.id, "refmac")
+  prefix = structure.path("refmac")
   result = tasks.refine(hklin, xyzin, prefix)
   structure.jobs["refmac"] = result
   return key, structure
@@ -296,7 +293,7 @@ def refine_deposited_structure(key, structure):
 def add_structure_metadata(key, structure):
   structure.add_metadata("refined_rwork", structure.jobs["refmac"]["final_rwork"])
   structure.add_metadata("refined_rfree", structure.jobs["refmac"]["final_rfree"])
-  pdbin = structure.path("deposited_pdb")
+  pdbin = structure.path("deposited.pdb")
   structure.add_metadata("semet", utils.is_semet(pdbin))
   mtzin = structure.jobs["cad"]["hklout"]
   mtz = gemmi.read_mtz_file(mtzin)
@@ -306,7 +303,7 @@ def add_structure_metadata(key, structure):
   return key, structure
 
 def prepare_structure_data(structures):
-  print("## PREPARING STRUCTURE DATA ##\n")
+  utils.print_section_title("Preparing Structure Data")
   steps = [
     ("Unzipping input files", unzip_input_files),
     ("Converting CIF files to MTZ", convert_to_mtz),
@@ -328,7 +325,7 @@ def search_for_homologues(chains):
   progress_bar = utils.ProgressBar("Performing gesamt searches", len(chains))
   for chain in chains.values():
     xyzin = chain.structure.jobs["refmac"]["xyzout"]
-    prefix = os.path.join(structure.id, "chain%s_gesamt" % chain.id)
+    prefix = chain.path("gesamt")
     result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
     chain.jobs["gesamt"] = result
     progress_bar.increment()
@@ -393,21 +390,16 @@ def choose_hits(key, chain):
   return key, chain
 
 def find_homologues(structures):
-  print("## FINDING HOMOLOGUES TO MAKE MR MODELS FROM ##\n")
-  # chains = {}
-  # for structure in structures.values():
-  #   os.mkdir(os.path.join(structure.id, "models"))
-  #   for chain in structure.chains.values():
-  #     key = "%s:%s" % (structure.id, chain.id)
-  #     chains[key] = chain
-  # search_for_homologues(chains)
+  utils.print_section_title("Finding Homologues to Make MR Models From")
+  chains = { c.global_id: c for s in structures.values() for c in s.chains.values() }
+  search_for_homologues(chains)
   # utils.parallel("Choosing from gesamt results", choose_hits, chains, args.jobs)
   print("")
 
 ## MR
 
 def mr(structures):
-  print("## PREPARING MODELS AND PERFORMING MOLECULAR REPLACEMENT ##\n")
+  utils.print_section_title("Preparing Models and Performing Molecular Replacement")
   # tasks.superpose(target_gz(), args.chain, model_gz(), args.model_chain, os.path.join(args.dir, "gesamt"))
   # tasks.post_process_gesamt_alignment(
   #   alnin=gesamt_fasta(),
@@ -443,23 +435,20 @@ if __name__ == "__main__":
     sys.exit("Please setup the CCP4 environment")
 
   args = parse_args()
+  print("Getting a list of structures from the PDB\n")
   rcsb_structures = rcsb.structures()
-  structures = choose_structures(rcsb_structures)
-  if len(structures) < 1: sys.exit("ERROR: No structures chosen")
-  # structures = { "1O6A": structures["1O6A"] }
-  for structure in structures.values():
-    os.mkdir(structure.id)
-    # input_files_exist(structure)
+  # structures = choose_structures(rcsb_structures)
+  # if len(structures) < 1: sys.exit("ERROR: No structures chosen")
+  structures = { "1O6A": init_structure(rcsb_structures["1O6A"]) }
   get_sequences(structures)
   prepare_structure_data(structures)
+  find_homologues(structures)
 
   # import pickle
   # with open("structures.pkl", "wb") as f:
   #   pickle.dump(structures, f)
   # with open("structures.pkl", "rb") as f:
   #   structures = pickle.load(f)
-
-  find_homologues(structures)
 
   print("------------------")
   print("Normal termination")

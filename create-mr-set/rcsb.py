@@ -52,7 +52,6 @@ def _get_structures():
       if structure_id not in _structures:
         _structures[structure_id] = _Structure(row)
       _structures[structure_id].chains[chain_id] = _Chain(row)
-  _structures = structures
 
 def download_custom_report(columns, path):
   """Download a custom report for all structures in the PDB"""

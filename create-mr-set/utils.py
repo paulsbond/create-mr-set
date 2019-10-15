@@ -96,3 +96,8 @@ def uppercase(seqin, seqout):
   for record in records:
     record.seq = Bio.Seq.Seq(str(record.seq).upper())
   Bio.SeqIO.write(records, seqout, "fasta")
+
+def print_section_title(title):
+  print("-" * len(title))
+  print(title.upper())
+  print("-" * len(title) + "\n")
