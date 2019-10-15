@@ -15,6 +15,7 @@ import sys
 import tasks
 import urllib.request
 import utils
+import uuid
 import xml.etree.ElementTree as ET
 
 ## ARGUMENTS
@@ -30,17 +31,17 @@ def add_optional_arguments(parser):
   optional = parser.add_argument_group("Optional arguments")
   optional.add_argument("--help", action="help", help="Show this help message and exit")
   optional.add_argument("--jobs", metavar="N", default="auto", help="Number of CPU threads to use (default: auto)")
-  optional.add_argument("--model-model-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
-  optional.add_argument("--model-model-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
-  optional.add_argument("--model-target-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
-  optional.add_argument("--model-target-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
-  optional.add_argument("--model-target-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
+  optional.add_argument("--model-model-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
+  optional.add_argument("--model-model-min-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
+  optional.add_argument("--model-target-max-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
+  optional.add_argument("--model-target-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
+  optional.add_argument("--model-target-min-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
   optional.add_argument("--num-structures", type=int, metavar="N", default=2, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
   optional.add_argument("--res-bins", type=int, metavar="N", default=2, help="Number of resolution bins (default: 10)") # TODO: Change back to default
   optional.add_argument("--res-max", type=float, metavar="X", default=3.0, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
-  optional.add_argument("--structure-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
+  optional.add_argument("--structure-structure-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
   optional.add_argument("--validation-rama", type=int, metavar="N", default=40, help="Percentage Ramachandran outliers percentile threshold (default: 40)")
   optional.add_argument("--validation-rfree", type=int, metavar="N", default=50, help="Rfree percentile threshold (default: 50)")
@@ -60,7 +61,7 @@ def parse_args():
   args = parser.parse_args()
   for arg in sorted(vars(args)):
     user_arg = "--%s" % arg.replace("_", "-")
-    print("%-21s  %s" % (user_arg, getattr(args, arg)))
+    print("%-31s  %s" % (user_arg, getattr(args, arg)))
   print("")
   add_calculated_arguments(args)
   return args
@@ -84,23 +85,23 @@ def assign_resolution_bins(structures):
     bins[i].structures.append(structure)
   return bins
 
-def gzipped_coords(structure):
-  pdb = structure.id.lower()
+def gzipped_coords(pdb_id):
+  pdb = pdb_id.lower()
   return os.path.join(args.pdb_coords, pdb[1:3], "pdb%s.ent.gz" % pdb)
 
-def gzipped_sfs(structure):
-  pdb = structure.id.lower()
+def gzipped_sfs(pdb_id):
+  pdb = pdb_id.lower()
   return os.path.join(args.pdb_sfs, pdb[1:3], "r%ssf.ent.gz" % pdb)
 
-def gzipped_report(structure):
-  pdb = structure.id.lower()
+def gzipped_report(pdb_id):
+  pdb = pdb_id.lower()
   return os.path.join(args.pdb_reports, pdb[1:3], pdb, "%s_validation.xml.gz" % pdb)
 
 def input_files_exist(structure):
   return all(os.path.exists(path) for path in {
-    gzipped_coords(structure),
-    gzipped_sfs(structure),
-    gzipped_report(structure),
+    gzipped_coords(structure.id),
+    gzipped_sfs(structure.id),
+    gzipped_report(structure.id),
   })
 
 def validation_report_okay(structure):
@@ -111,7 +112,7 @@ def validation_report_okay(structure):
     "relative-percentile-percent-rama-outliers": "validation_rota",
     "relative-percentile-percent-rota-outliers": "validation_rsrz",
   }
-  path = gzipped_report(structure)
+  path = gzipped_report(structure.id)
   if not os.path.exists(path): return False
   with gzip.open(path) as f:
     content = f.read()
@@ -129,7 +130,7 @@ def choose_structures(structures):
   utils.print_section_title("Choosing Structures")
   res_bins = assign_resolution_bins(structures)
   chosen_clusters = set()
-  cluster_attr = "cluster%d" % args.structure_seqid
+  cluster_attr = "cluster%d" % args.structure_structure_max_seqid
   res_bins.sort(key=lambda res_bin: len(res_bin.structures))
   for res_bin in res_bins:
     title = "Choosing %.2f-%.2fA structures (%d to choose from)" % (
@@ -231,8 +232,8 @@ def get_sequences(structures):
 ## PREPARE STRUCTURE DATA
 
 def unzip_input_files(key, structure):
-  utils.run("gunzip", ["-c", gzipped_coords(structure)], stdout=structure.path("deposited.pdb"))
-  utils.run("gunzip", ["-c", gzipped_sfs(structure)], stdout=structure.path("deposited.cif"))
+  utils.run("gunzip", ["-c", gzipped_coords(structure.id)], stdout=structure.path("deposited.pdb"))
+  utils.run("gunzip", ["-c", gzipped_sfs(structure.id)], stdout=structure.path("deposited.cif"))
   return key, structure
 
 def convert_to_mtz(key, structure):
@@ -320,71 +321,63 @@ def search_for_homologues(chains):
     result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
     chain.jobs["gesamt"] = result
     progress_bar.increment()
-  print("")
+  progress_bar.finish()
 
 class Hit:
-  def __init__(self, target, pdb, chain, qscore, rmsd, seqid):
-    self.target = target
-    self.pdb = pdb
-    self.chain = chain
-    self.qscore = qscore
-    self.rmsd = rmsd
-    self.seqid = seqid
-    self.cluster = None
-    if pdb.upper() in structures:
-      for chain in structures[pdb.upper()].chains:
-        if chain.id == self.chain:
-          attr = "cluster%d" % args.diff_seqid
-          self.cluster = getattr(chain, attr)
-          break
+  def __init__(self, line):
+    split = line.split()
+    self.pdb = split[1]
+    self.chain = split[2]
+    self.qscore = float(split[3])
+    self.rmsd = float(split[4])
+    self.seqid = float(split[5])
+    self.cluster = rcsb.cluster_number(self.pdb, self.chain, args.model_model_max_seqid)
 
-def possible_gesamt_hits(chain):
-  hits_path = os.path.join(args.pdb, "chain%s_gesamt.txt" % chain)
-  with open(hits_path) as hits_file:
-    for line in hits_file:
+def filtered_gesamt_hits(chain):
+  with open(chain.path("gesamt.txt")) as f:
+    for line in f:
       if line[0] == "#": continue
-      split = line.split()
-      hit_pdb = split[1].lower()
-      hit_chain = split[2]
-      qscore = float(split[3])
-      rmsd = float(split[4])
-      seqid = float(split[5])
-      if qscore > args.min_qscore and rmsd < args.max_rmsd and seqid < (args.diff_seqid / 100.0):
-        yield Hit(hit_pdb, hit_chain, qscore, rmsd, seqid)
+      hit = Hit(line)
+      if (hit.qscore > args.model_target_min_qscore and
+          hit.rmsd < args.model_target_max_rmsd and
+          hit.seqid < (args.model_target_max_seqid / 100.0)):
+        yield hit
 
-def alignment_stats(hit1, hit2):
+def superpose_result(hit1, hit2):
   tmp_prefix = "tmp%s" % uuid.uuid4()
-  path1 = os.path.join(args.pdbs, hit1.pdb[1:3], "pdb%s.ent.gz" % hit1.pdb)
-  path2 = os.path.join(args.pdbs, hit2.pdb[1:3], "pdb%s.ent.gz" % hit2.pdb)
-  tasks.superpose(path1, hit1.chain, path2, hit2.chain, tmp_prefix)
-  os.remove(tmp_path) # TODO: Remove all files starting with this prefix
-  return stats
+  path1 = gzipped_coords(hit1.pdb)
+  path2 = gzipped_coords(hit2.pdb)
+  result = tasks.superpose(path1, hit1.chain, path2, hit2.chain, tmp_prefix)
+  utils.remove_files_starting_with(tmp_prefix)
+  return result
 
 def should_choose(hit, chosen_hits):
   if hit.cluster is None: return False
   for chosen_hit in reversed(chosen_hits):
     if hit.cluster == chosen_hit.cluster: return False
   for chosen_hit in reversed(chosen_hits):
-    stats = alignment_stats(hit, chosen_hit)
-    if stats["rmsd"] is not None and stats["rmsd"] < args.diff_rmsd: return False
-    if stats["seqid"] is not None and stats["seqid"] > (args.diff_seqid / 100.0): return False
+    result = superpose_result(hit, chosen_hit)
+    if "error" in result: return False
+    if result["rmsd"] < args.model_model_min_rmsd: return False
+    if result["seqid"] > (args.model_model_max_seqid / 100.0):return False
   return True
 
 def choose_hits(key, chain):
-  chain.chosen_hits = []
-  for hit in possible_gesamt_hits(chain):
-    if should_choose(hit, chain.chosen_hits):
-      chain.chosen_hits.append(hit)
-      os.mkdir(os.path.join(args.pdb, "models", "%s_%s%s" % (chain, hit.pdb, hit.chain)))
-      if len(chain.chosen_hits) == args.max_models:
+  chosen_hits = []
+  for hit in filtered_gesamt_hits(chain):
+    if should_choose(hit, chosen_hits):
+      chosen_hits.append(hit)
+      if len(chosen_hits) == args.num_models:
         break
+  for hit in chosen_hits:
+    models.Homologue(hit.pdb, hit.chain, chain)
   return key, chain
 
 def find_homologues(structures):
   utils.print_section_title("Finding Homologues to Make MR Models From")
   chains = { c.global_id: c for s in structures.values() for c in s.chains.values() }
   search_for_homologues(chains)
-  # utils.parallel("Choosing from gesamt results", choose_hits, chains, args.jobs)
+  utils.parallel("Choosing from gesamt results", choose_hits, chains, args.jobs)
   print("")
 
 ## MR

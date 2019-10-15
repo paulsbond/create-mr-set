@@ -1,6 +1,8 @@
 import Bio.Seq
 import Bio.SeqIO
+import glob
 import multiprocessing
+import os
 import subprocess
 import sys
 
@@ -101,3 +103,8 @@ def print_section_title(title):
   print("-" * len(title))
   print(title.upper())
   print("-" * len(title) + "\n")
+
+def remove_files_starting_with(prefix):
+  pattern = "%s*" % prefix
+  for filename in glob.glob(pattern):
+    os.remove(filename)

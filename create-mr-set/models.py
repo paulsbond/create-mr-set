@@ -39,8 +39,10 @@ class Chain(_Base):
     self.homologues = {}
 
 class Homologue(_Base):
-  def __init__(self, homologue_id, chain):
-    self.id = homologue_id
+  def __init__(self, hit_pdb, hit_chain, chain):
+    self.structure_id = hit_pdb
+    self.chain_id = hit_chain
+    self.id = "%s_%s" % (hit_pdb, hit_chain)
     super().__init__(os.path.join(chain.directory, "homologues", self.id))
     self.chain = chain
-    chain.homologues[self.id] = self
+    self.chain.homologues[self.id] = self
