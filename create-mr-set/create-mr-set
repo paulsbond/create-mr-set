@@ -235,6 +235,7 @@ def get_sequences(structures):
 def unzip_input_files(key, structure):
   utils.run("gunzip", ["-c", gzipped_coords(structure.id)], stdout=structure.path("deposited.pdb"))
   utils.run("gunzip", ["-c", gzipped_sfs(structure.id)], stdout=structure.path("deposited.cif"))
+  structure.add_metadata("semet", utils.is_semet(structure.path("deposited.pdb")))
   return key, structure
 
 def convert_to_mtz(key, structure):
@@ -266,6 +267,11 @@ def rename_columns(key, structure):
   prefix = structure.path("cad")
   result = tasks.select_and_rename_columns(hklin, colin, colout, prefix)
   structure.jobs["cad"] = result
+  if "error" not in result:
+    mtz = gemmi.read_mtz_file(result["hklout"])
+    structure.add_metadata("spacegroup", mtz.spacegroup.hm)
+    structure.add_metadata("resolution", round(mtz.resolution_high(), 2))
+    structure.add_metadata("asu_volume", round(mtz.cell.volume / mtz.nsymop))
   return key, structure
 
 def remove_unl_residues(key, structure):
@@ -281,18 +287,9 @@ def refine_deposited_structure(key, structure):
   prefix = structure.path("refmac")
   result = tasks.refine(hklin, xyzin, prefix)
   structure.jobs["refmac"] = result
-  return key, structure
-
-def add_structure_metadata(key, structure):
-  structure.add_metadata("refined_rwork", structure.jobs["refmac"]["final_rwork"])
-  structure.add_metadata("refined_rfree", structure.jobs["refmac"]["final_rfree"])
-  pdbin = structure.path("deposited.pdb")
-  structure.add_metadata("semet", utils.is_semet(pdbin))
-  mtzin = structure.jobs["cad"]["hklout"]
-  mtz = gemmi.read_mtz_file(mtzin)
-  structure.add_metadata("spacegroup", mtz.spacegroup.hm)
-  structure.add_metadata("resolution", round(mtz.resolution_high(), 2))
-  structure.add_metadata("asu_volume", round(mtz.cell.volume / mtz.nsymop))
+  if "error" not in result:
+    structure.add_metadata("refined_rwork", result["final_rwork"])
+    structure.add_metadata("refined_rfree", result["final_rfree"])
   return key, structure
 
 def prepare_structure_data(structures):
@@ -305,7 +302,6 @@ def prepare_structure_data(structures):
     ("Renaming columns", rename_columns),
     ("Removing UNL residues", remove_unl_residues),
     ("Refining structures", refine_deposited_structure),
-    ("Adding metadata", add_structure_metadata),
   ]
   for title, func in steps:
     utils.parallel(title, func, structures, args.jobs)
@@ -389,6 +385,11 @@ def superpose_homologue(key, homologue):
   prefix = homologue.path("gesamt")
   result = tasks.superpose(xyzin1, chain1, xyzin2, chain2, prefix)
   homologue.jobs["gesamt"] = result
+  if "error" not in result:
+    homologue.add_metadata("gesamt_qscore", result["qscore"])
+    homologue.add_metadata("gesamt_rmsd", result["rmsd"])
+    homologue.add_metadata("gesamt_length", result["length"])
+    homologue.add_metadata("gesamt_seqid", result["seqid"])
   return key, homologue
 
 def uppercase_alignment(key, homologue):
@@ -415,12 +416,46 @@ def mr(key, homologue):
   atom_counts = pdbtools.count_elements(homologue.chain.structure.path("deposited.pdb"))
   result = tasks.mr(hklin, xyzin, identity, prefix, copies, atom_counts)
   homologue.jobs["phaser"] = result
+  if "error" not in result:
+    homologue.add_metadata("phaser_llg", result["llg"])
+    homologue.add_metadata("phaser_rmsd", result["rmsd"])
   return key, homologue
 
-def template(key, homologue):
-  prefix = homologue.path("template")
-  result = tasks.template(prefix)
-  homologue.jobs["template"] = result
+def refine_placed_model(key, homologue):
+  hklin = homologue.chain.structure.jobs["cad"]["hklout"]
+  xyzin = homologue.jobs["phaser"]["xyzout"]
+  prefix = homologue.path("refmac")
+  result = tasks.refine(hklin, xyzin, prefix)
+  homologue.jobs["refmac"] = result
+  if "error" not in result:
+    homologue.add_metadata("final_rfree", result["final_rfree"])
+    homologue.add_metadata("final_rwork", result["final_rwork"])
+    homologue.add_metadata("initial_rfree", result["initial_rfree"])
+    homologue.add_metadata("initial_rwork", result["initial_rwork"])
+  return key, homologue
+
+def write_combined_mtz(key, homologue):
+  prefix = homologue.path("cmtzjoin")
+  result = tasks.combine_mtz(prefix, [
+    (homologue.chain.structure.jobs["cad"]["hklout"], "FP,SIGFP", "FP,SIGFP"),
+    (homologue.chain.structure.jobs["cad"]["hklout"], "FREE", "FREE"),
+    (homologue.chain.structure.jobs["refmac"]["hklout"], "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"),
+    (homologue.jobs["refmac"]["hklout"], "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "model.HLA,model.HLB,model.HLC,model.HLD"),
+  ])
+  homologue.jobs["cmtzjoin"] = result
+  return key, homologue
+
+def compare_phases(key, homologue):
+  hklin = homologue.jobs["cmtzjoin"]["hklout"]
+  fo = "FP,SIGFP"
+  wrk_hl = "model.HLA,model.HLB,model.HLC,model.HLD"
+  ref_hl = "reference.HLA,reference.HLB,reference.HLC,reference.HLD"
+  prefix = homologue.path("cphasematch")
+  result = tasks.compare_phases(hklin, fo, wrk_hl, ref_hl, prefix)
+  homologue.jobs["cphasematch"] = result
+  if "error" not in result:
+    homologue.add_metadata("mean_phase_error", result["mean_phase_error"])
+    homologue.add_metadata("f_map_correlation", result["f_map_correlation"])
   return key, homologue
 
 def prepare_and_do_mr(homologues):
@@ -429,22 +464,14 @@ def prepare_and_do_mr(homologues):
     ("Superposing homologues for sequence alignments", superpose_homologue),
     ("Tranform gesamt alignments to uppercase", uppercase_alignment),
     ("Trimming input models with sculptor", trim_model),
-    ("Performing molecular replacement with phaser", mr)
+    # ("Performing molecular replacement with phaser", mr),
+    # ("Refining placed models", refine_placed_model),
+    # ("Combining phases into a single MTZ file", write_combined_mtz),
+    # ("Comparing phases with cphasematch", compare_phases)
   ]
   for title, func in steps:
     utils.parallel(title, func, homologues, args.jobs)
     utils.remove_errors(homologues)
-  # h = list(homologues.values())[0]
-  # mr(h.id, h)
-
-  # tasks.refine(joined_mtz, phaser_pdb, os.path.join(args.dir, "refmac"))
-  # tasks.combine_mtz(cmtzjoin_mtz(), [
-  #   (joined_mtz(), "FP,SIGFP", "FP,SIGFP"),
-  #   (joined_mtz(), "FREE", "FREE"),
-  #   (joined_mtz(), "reference.HLA,reference.HLB,reference.HLC,reference.HLD", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"),
-  #   (refmac_mtz(), "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "model.HLA,model.HLB,model.HLC,model.HLD"),
-  # ])
-  # tasks.compare_phases(cmtzjoin_mtz(), "FP,SIGFP", "model.HLA,model.HLB,model.HLC,model.HLD", "reference.HLA,reference.HLB,reference.HLC,reference.HLD")
   print("")
 
 ## MAIN
@@ -485,8 +512,8 @@ if __name__ == "__main__":
   #   pickle.dump(chains, f)
   with open("chains.pkl", "rb") as f:
     chains = pickle.load(f)
-
   homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values()}
+
   prepare_and_do_mr(homologues)
 
   print("------------------")

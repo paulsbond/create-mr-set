@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import traceback
 
 class ProgressBar:
   def __init__(self, task, total, milestones=5):
@@ -59,9 +60,11 @@ def parallel(title, func, dictionary, processes=None):
     key, value = item
     dictionary[key] = value
     progress_bar.increment()
+  def error_callback(exc):
+    traceback.print_exception(type(exc), exc, exc.__traceback__)
   pool = multiprocessing.Pool(processes)
   for key, value in dictionary.items():
-    pool.apply_async(func, args=(key, value), callback=callback)
+    pool.apply_async(func, args=(key, value), callback=callback, error_callback=error_callback)
   pool.close()
   pool.join()
   progress_bar.finish()

@@ -42,7 +42,7 @@ def cif2mtz(hklin, prefix):
   return result
 
 
-def combine_mtz(prefix, *columns):
+def combine_mtz(prefix, columns):
   """Combine columns from multiple MTZ files with cmtzjoin"""
   result = {
     "hklout": "%s.mtz" % prefix,
@@ -122,6 +122,8 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
   """Perform molecular replacement with PHASER"""
   result = {
     "xyzout": "%s.1.pdb" % prefix,
+    "hklout": "%s.1.mtz" % prefix,
+    "solout": "%s.sol" % prefix,
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
   }
@@ -151,11 +153,19 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
       return { "error": "Bad ensemble given as input" }
     else:
       return { "error": "No coordinates produced" }
-  with open(result["xyzout"]) as pdb_file:
-    for line in pdb_file:
+  with open(result["xyzout"]) as f:
+    for line in f:
       if line[:26] == "REMARK Log-Likelihood Gain":
         result["llg"] = float(line.split()[-1])
-        return result
+        break
+  with open(result["solout"]) as f:
+    for line in f:
+      split = line.split()
+      if "#RMSD" in split:
+        i = split.index("#RMSD")
+        result["rmsd"] = float(split[i+1])
+        break
+  return result
 
 
 def refine(hklin, xyzin, prefix, cycles=10):
