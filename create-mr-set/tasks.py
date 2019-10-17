@@ -201,6 +201,7 @@ def refine(hklin, xyzin, prefix, cycles=10):
   root = ET.parse(result["xmlout"]).getroot()
   rworks = list(root.iter("r_factor"))
   rfrees = list(root.iter("r_free"))
+  result["data_completeness"] = float(list(root.iter("data_completeness"))[0].text)
   result["final_rfree"] = float(rfrees[-1].text)
   result["final_rwork"] = float(rworks[-1].text)
   result["initial_rfree"] = float(rfrees[0].text)
