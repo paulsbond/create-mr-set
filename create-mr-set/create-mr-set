@@ -392,16 +392,19 @@ def superpose_homologue(key, homologue):
     homologue.add_metadata("gesamt_seqid", result["seqid"])
   return key, homologue
 
-def uppercase_alignment(key, homologue):
+def prepare_sculptor_alignment(key, homologue):
   seqin = homologue.jobs["gesamt"]["seqout"]
-  seqout = homologue.path("uppercase.fasta")
-  utils.transform_sequences_to_uppercase(seqin, seqout)
+  seqout = homologue.path("sculptor.aln")
+  records = list(Bio.SeqIO.parse(seqin, "fasta"))
+  for record in records:
+    record.seq = Bio.Seq.Seq(str(record.seq).upper())
+  Bio.SeqIO.write(records, seqout, "clustal")
   return key, homologue
 
 def trim_model(key, homologue):
   model = gzipped_coords(homologue.hit_pdb)
   chain = homologue.hit_chain
-  alignment = homologue.path("uppercase.fasta")
+  alignment = homologue.path("sculptor.aln")
   prefix = homologue.path("sculptor")
   result = tasks.trim_model(model, chain, alignment, prefix)
   homologue.jobs["sculptor"] = result
@@ -462,12 +465,12 @@ def prepare_and_do_mr(homologues):
   utils.print_section_title("Preparing Models and Performing Molecular Replacement")
   steps = [
     ("Superposing homologues for sequence alignments", superpose_homologue),
-    ("Tranform gesamt alignments to uppercase", uppercase_alignment),
+    ("Preparing alignments for sculptor", prepare_sculptor_alignment),
     ("Trimming input models with sculptor", trim_model),
-    # ("Performing molecular replacement with phaser", mr),
-    # ("Refining placed models", refine_placed_model),
-    # ("Combining phases into a single MTZ file", write_combined_mtz),
-    # ("Comparing phases with cphasematch", compare_phases)
+    ("Performing molecular replacement with phaser", mr),
+    ("Refining placed models", refine_placed_model),
+    ("Combining phases into a single MTZ file", write_combined_mtz),
+    ("Comparing phases with cphasematch", compare_phases)
   ]
   for title, func in steps:
     utils.parallel(title, func, homologues, args.jobs)
