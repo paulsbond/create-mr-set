@@ -126,6 +126,8 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
     "solout": "%s.sol" % prefix,
     "stdout": "%s.log" % prefix,
     "stderr": "%s.err" % prefix,
+    "llg": None,
+    "rmsd": None,
   }
   keywords = [
     "MODE MR_AUTO",
