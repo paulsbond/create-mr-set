@@ -320,10 +320,11 @@ def remove_structures(structures):
     rwork_diff = structure.metadata["refined_rwork"] - structure.metadata["reported_rwork"]
     if rwork_diff > 0.05:
       remove(structure, r"Refined R-work is >5% higher than reported R-work")
+  for structure in list(structures.values()):
     if structure.metadata["data_completeness"] < 90:
       remove(structure, r"Data completeness is below 90%")
   if len(reason_count) > 0:
-    print("Removing some structures:")
+    print("Removed some structures:")
     for reason in reason_count:
       print("%s (%d removed)" % (reason, reason_count[reason]))
     print("")
