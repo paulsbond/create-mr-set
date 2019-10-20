@@ -38,9 +38,9 @@ def add_optional_arguments(parser):
   optional.add_argument("--model-target-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
   optional.add_argument("--model-target-min-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
-  optional.add_argument("--num-structures", type=int, metavar="N", default=3, help="Maximum number of structures to find in each resolution bin (default: 200)") # TODO: Change back to default
-  optional.add_argument("--res-bins", type=int, metavar="N", default=5, help="Number of resolution bins (default: 10)") # TODO: Change back to default
-  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)") # TODO: Change back to default
+  optional.add_argument("--num-structures", type=int, metavar="N", default=200, help="Maximum number of structures to find in each resolution bin (default: 200)")
+  optional.add_argument("--res-bins", type=int, metavar="N", default=10, help="Number of resolution bins (default: 10)")
+  optional.add_argument("--res-max", type=float, metavar="X", default=3.5, help="Maximum resolution (exclusive) (default: 3.5)")
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--stop-before-mr", action="store_true", help="Prepare the models but stop before performing MR")
   optional.add_argument("--structure-structure-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
@@ -485,24 +485,24 @@ def compare_phases(key, homologue):
     homologue.add_metadata("f_map_correlation", result["f_map_correlation"])
   return key, homologue
 
-def prepare_models(homologues):
+def prepare_and_do_mr(homologues):
   title = "Preparing Models"
   steps = [
-    ("Superposing homologues for sequence alignments", superpose_homologue),
-    ("Preparing alignments for sculptor", prepare_sculptor_alignment),
-    ("Trimming input models with sculptor", trim_model),
+    ("Superposing homologues for sequence alignments", superpose_homologue, args.jobs),
+    ("Preparing alignments for sculptor", prepare_sculptor_alignment, args.jobs),
+    ("Trimming input models with sculptor", trim_model, args.jobs),
   ]
   if not args.stop_before_mr:
     title += " and Performing Molecular Replacement"
     steps += [
-      ("Performing molecular replacement with phaser", mr),
-      ("Refining placed models", refine_placed_model),
-      ("Combining phases into a single MTZ file", write_combined_mtz),
-      ("Comparing phases with cphasematch", compare_phases)
+      ("Performing molecular replacement with phaser", mr, int(args.jobs / 4)),
+      ("Refining placed models", refine_placed_model, args.jobs),
+      ("Combining phases into a single MTZ file", write_combined_mtz, args.jobs),
+      ("Comparing phases with cphasematch", compare_phases, args.jobs)
     ]
   utils.print_section_title(title)
-  for title, func in steps:
-    utils.parallel(title, func, homologues, args.jobs)
+  for title, func, jobs in steps:
+    utils.parallel(title, func, homologues, jobs)
     utils.remove_errors(homologues)
   print("")
 
@@ -536,10 +536,6 @@ if __name__ == "__main__":
 
   homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values()}
   prepare_and_do_mr(homologues)
-
-  import pickle
-  with open("homologues.pkl", "wb") as f:
-    pickled.dump(homologues, f)
 
   print("------------------")
   print("Normal termination")

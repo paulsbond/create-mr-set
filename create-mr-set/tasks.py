@@ -138,7 +138,7 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
     "PURGE ROT NUMBER 1",
     "PURGE TRA NUMBER 1",
     "PURGE RNP NUMBER 1",
-    "JOBS 1",
+    "JOBS 4",
   ]
   for atom in atom_counts:
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, atom_counts[atom]))

@@ -22,7 +22,6 @@ class _Chain:
     self.cluster50 = row["clusterNumber50"]
     self.cluster40 = row["clusterNumber40"]
     self.cluster30 = row["clusterNumber30"]
-    self.jobs = {}
 
 def _get_structures():
   global _structures
