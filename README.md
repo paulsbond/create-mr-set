@@ -1,4 +1,4 @@
-# Paper: Test Set
+# Create MR Set
 
 Script to create new molecular replacement test sets.
 
