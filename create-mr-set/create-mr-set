@@ -108,11 +108,11 @@ def input_files_exist(structure):
 
 def validation_report_okay(structure):
   attrib_key_dict = {
-    "relative-percentile-DCC_Rfree": "validation_clash",
-    "relative-percentile-clashscore": "validation_rama",
-    "relative-percentile-percent-RSRZ-outliers": "validation_rfree",
-    "relative-percentile-percent-rama-outliers": "validation_rota",
-    "relative-percentile-percent-rota-outliers": "validation_rsrz",
+    "relative-percentile-DCC_Rfree": "validation_rfree",
+    "relative-percentile-clashscore": "validation_clash",
+    "relative-percentile-percent-RSRZ-outliers": "validation_rsrz",
+    "relative-percentile-percent-rama-outliers": "validation_rama",
+    "relative-percentile-percent-rota-outliers": "validation_rota",
   }
   path = gzipped_report(structure.id)
   if not os.path.exists(path): return False
