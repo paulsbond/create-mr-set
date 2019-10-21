@@ -37,6 +37,7 @@ def cif2mtz(hklin, prefix):
     return { "error": "No MTZ file produced" }
   with open(result["stderr"]) as f:
     for line in f:
+      line = line.strip()
       if line[:8] == "cif2mtz:":
         return { "error": line[8:].strip() }
   return result
