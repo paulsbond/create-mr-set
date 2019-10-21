@@ -188,6 +188,7 @@ def refine(hklin, xyzin, prefix, cycles=10):
     "XMLOUT", result["xmlout"],
   ], [
     "NCYCLES %d" % cycles,
+    "MAKE NEWLIGAND NOEXIT",
     "PHOUT",
     "END"
   ], stdout=result["stdout"], stderr=result["stderr"])
