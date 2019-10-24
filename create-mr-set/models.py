@@ -7,6 +7,9 @@ class _Base:
     self.global_id = directory.replace("/", "_")
     self.directory = directory
     self.metadata = {}
+    if os.path.exists(self.path("metadata.json")):
+      with open(self.path("metadata.json")) as f:
+        self.metadata = json.load(f)
     self.jobs = {}
     os.makedirs(self.directory, exist_ok=True)
 
@@ -15,8 +18,7 @@ class _Base:
 
   def add_metadata(self, key, value):
     self.metadata[key] = value
-    path = os.path.join(self.directory, "metadata.json")
-    with open(path, "w") as f:
+    with open(self.path("metadata.json"), "w") as f:
       json.dump(self.metadata, f, sort_keys=True, indent=2)
 
   def remove_directory(self):
