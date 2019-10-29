@@ -142,6 +142,7 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
     "JOBS 4",
   ]
   for atom in atom_counts:
+    if atom.strip() == "X": continue
     keywords.append("COMPOSITION ATOM %-2s NUMBER %d" % (atom, atom_counts[atom]))
   utils.run("phaser", stdin=keywords, stdout=result["stdout"], stderr=result["stderr"])
   if not os.path.exists(result["xyzout"]):
