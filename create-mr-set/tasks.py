@@ -155,6 +155,8 @@ def mr(hklin, xyzin, identity, prefix, copies, atom_counts):
       return { "error": "No scattering in input coordinates" }
     elif "INPUT ERROR: Structure Factors of Models" in log:
       return { "error": "Bad ensemble given as input" }
+    elif "F is negative" in log:
+      return { "error": "Reflection(s) with negative F" }
     else:
       return { "error": "No coordinates produced" }
   with open(result["xyzout"]) as f:
