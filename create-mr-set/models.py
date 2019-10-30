@@ -28,10 +28,14 @@ class Structure(_Base):
   def __init__(self, rcsb_structure):
     self.id = rcsb_structure.id
     super().__init__(os.path.join("structures", self.id))
-    self.chains = {cid: Chain(cid, self) for cid in rcsb_structure.chains}
-    self.add_metadata("reported_resolution", rcsb_structure.resolution)
-    self.add_metadata("reported_rwork", rcsb_structure.rwork)
-    self.add_metadata("reported_rfree", rcsb_structure.rfree)
+    existing_chains = os.listdir(self.path("chains"))
+    if len(existing_chains) > 0:
+      self.chains = {cid: Chain(cid, self) for cid in existing_chains}
+    else:
+      self.chains = {cid: Chain(cid, self) for cid in rcsb_structure.chains}
+      self.add_metadata("reported_resolution", rcsb_structure.resolution)
+      self.add_metadata("reported_rwork", rcsb_structure.rwork)
+      self.add_metadata("reported_rfree", rcsb_structure.rfree)
 
 class Chain(_Base):
   def __init__(self, chain_id, structure):
@@ -48,3 +52,4 @@ class Homologue(_Base):
     super().__init__(os.path.join(chain.directory, "homologues", self.id))
     self.chain = chain
     self.chain.homologues[self.id] = self
+    self.todo = len(self.metadata) == 0

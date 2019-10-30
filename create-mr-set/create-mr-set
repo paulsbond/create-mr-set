@@ -6,6 +6,7 @@ import Bio.SeqIO
 import Bio.SeqRecord
 import datetime
 import gemmi
+import glob
 import gzip
 import models
 import os
@@ -335,9 +336,11 @@ def remove_structures(structures):
 ## FIND HOMOLOGUES
 
 def search_for_homologues(chains):
-  progress_bar = utils.ProgressBar("Performing gesamt searches", len(chains))
-  for chain in chains.values():
-    xyzin = chain.structure.jobs["refmac"]["xyzout"]
+  todo = [c for c in chains.values() if not os.path.exists(c.path("gesamt.txt"))]
+  if len(todo) == 0: return
+  progress_bar = utils.ProgressBar("Performing gesamt searches", len(todo))
+  for chain in todo:
+    xyzin = chain.structure.path("refmac.pdb")
     prefix = chain.path("gesamt")
     result = tasks.structural_homologues(xyzin, chain.id, prefix, args.gesamt_archive, args.jobs)
     chain.jobs["gesamt"] = result
@@ -384,14 +387,19 @@ def should_choose(hit, chosen_hits):
   return True
 
 def choose_hits(key, chain):
-  chosen_hits = []
-  for hit in filtered_gesamt_hits(chain):
-    if should_choose(hit, chosen_hits):
-      chosen_hits.append(hit)
-      if len(chosen_hits) == args.num_models:
-        break
-  for hit in chosen_hits:
-    models.Homologue(hit.pdb, hit.chain, chain)
+  if os.path.exists(chain.path("homologues")):
+    for hid in os.listdir(chain.path("homologues")):
+      split = hid.split("_")
+      models.Homologue(split[0], split[1], chain)
+  else:
+    chosen_hits = []
+    for hit in filtered_gesamt_hits(chain):
+      if should_choose(hit, chosen_hits):
+        chosen_hits.append(hit)
+        if len(chosen_hits) == args.num_models:
+          break
+    for hit in chosen_hits:
+      models.Homologue(hit.pdb, hit.chain, chain)
   return key, chain
 
 def find_homologues(chains):
@@ -402,7 +410,7 @@ def find_homologues(chains):
 ## MR
 
 def superpose_homologue(key, homologue):
-  xyzin1 = homologue.chain.structure.jobs["refmac"]["xyzout"]
+  xyzin1 = homologue.chain.structure.path("refmac.pdb")
   chain1 = homologue.chain.id
   xyzin2 = gzipped_coords(homologue.hit_pdb)
   chain2 = homologue.hit_chain
@@ -417,7 +425,7 @@ def superpose_homologue(key, homologue):
   return key, homologue
 
 def prepare_sculptor_alignment(key, homologue):
-  seqin = homologue.jobs["gesamt"]["seqout"]
+  seqin = homologue.path("gesamt.seq")
   seqout = homologue.path("sculptor.aln")
   records = list(Bio.SeqIO.parse(seqin, "fasta"))
   for record in records:
@@ -435,9 +443,9 @@ def trim_model(key, homologue):
   return key, homologue
 
 def mr(key, homologue):
-  hklin = homologue.chain.structure.jobs["cad"]["hklout"]
-  xyzin = homologue.jobs["sculptor"]["xyzout"]
-  identity = homologue.jobs["gesamt"]["seqid"]
+  hklin = homologue.chain.structure.path("cad.mtz")
+  xyzin = glob.glob(homologue.path("sculptor*.pdb"))[0]
+  identity = homologue.metadata["gesamt_seqid"]
   prefix = homologue.path("phaser")
   copies = homologue.chain.metadata["copies"]
   atom_counts = pdbtools.count_elements(homologue.chain.structure.path("deposited.pdb"))
@@ -449,8 +457,8 @@ def mr(key, homologue):
   return key, homologue
 
 def refine_placed_model(key, homologue):
-  hklin = homologue.chain.structure.jobs["cad"]["hklout"]
-  xyzin = homologue.jobs["phaser"]["xyzout"]
+  hklin = homologue.chain.structure.path("cad.mtz")
+  xyzin = homologue.path("phaser.1.pdb")
   prefix = homologue.path("refmac")
   result = tasks.refine(hklin, xyzin, prefix)
   homologue.jobs["refmac"] = result
@@ -464,16 +472,16 @@ def refine_placed_model(key, homologue):
 def write_combined_mtz(key, homologue):
   prefix = homologue.path("cmtzjoin")
   result = tasks.combine_mtz(prefix, [
-    (homologue.chain.structure.jobs["cad"]["hklout"], "FP,SIGFP", "FP,SIGFP"),
-    (homologue.chain.structure.jobs["cad"]["hklout"], "FREE", "FREE"),
-    (homologue.chain.structure.jobs["refmac"]["hklout"], "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"),
-    (homologue.jobs["refmac"]["hklout"], "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "model.HLA,model.HLB,model.HLC,model.HLD"),
+    (homologue.chain.structure.path("cad.mtz"), "FP,SIGFP", "FP,SIGFP"),
+    (homologue.chain.structure.path("cad.mtz"), "FREE", "FREE"),
+    (homologue.chain.structure.path("refmac.mtz"), "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "reference.HLA,reference.HLB,reference.HLC,reference.HLD"),
+    (homologue.path("refmac.mtz"), "HLACOMB,HLBCOMB,HLCCOMB,HLDCOMB", "model.HLA,model.HLB,model.HLC,model.HLD"),
   ])
   homologue.jobs["cmtzjoin"] = result
   return key, homologue
 
 def compare_phases(key, homologue):
-  hklin = homologue.jobs["cmtzjoin"]["hklout"]
+  hklin = homologue.path("cmtzjoin.mtz")
   fo = "FP,SIGFP"
   wrk_hl = "model.HLA,model.HLB,model.HLC,model.HLD"
   ref_hl = "reference.HLA,reference.HLB,reference.HLC,reference.HLD"
@@ -525,17 +533,25 @@ if __name__ == "__main__":
 
   print("Getting a list of structures from the PDB ...\n")
   rcsb_structures = rcsb.structures()
-  structures = choose_structures(rcsb_structures)
-  if len(structures) < 1: sys.exit("ERROR: No structures chosen")
-  get_sequences(structures)
-  prepare_structure_data(structures)
-  remove_structures(structures)
+
+  existing = os.listdir("structures")
+  if len(existing) > 0:
+    structures = { sid: models.Structure(rcsb_structures[sid]) for sid in existing }
+    structures = { s.id: s for s in structures.values() if "error" not in s.metadata }
+    print("Working on %d existing structures without errors" % len(structures))
+  else:
+    structures = choose_structures(rcsb_structures)
+    if len(structures) < 1: sys.exit("ERROR: No structures chosen")
+    get_sequences(structures)
+    prepare_structure_data(structures)
+    remove_structures(structures)
 
   chains = {c.global_id: c for s in structures.values() for c in s.chains.values()}
   find_homologues(chains)
 
-  homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values()}
-  prepare_and_do_mr(homologues)
+  homologues = {h.global_id: h for c in chains.values() for h in c.homologues.values() if h.todo}
+  if len(homologues) > 0:
+    prepare_and_do_mr(homologues)
 
   print("------------------")
   print("Normal termination")
