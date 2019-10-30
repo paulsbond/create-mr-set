@@ -45,6 +45,8 @@ def add_optional_arguments(parser):
   optional.add_argument("--res-min", type=float, metavar="X", default=1.0, help="Minimum resolution (inclusive) (default: 1.0)")
   optional.add_argument("--stop-before-mr", action="store_true", help="Prepare the models but stop before performing MR")
   optional.add_argument("--structure-structure-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=50, help="Maximum sequence identity used for filtering structures with similar chains (default: 50)")
+  optional.add_argument("--tolerance-completeness", type=float, metavar="X", default=90, help="Minimum allowed data completeness (default: 90)")
+  optional.add_argument("--tolerance-rwork", type=float, metavar="X", default=0.05, help="Maximum allowed difference between reported and refined R-work (default: 0.05)")
   optional.add_argument("--validation-clash", type=int, metavar="N", default=40, help="Clashscore percentile threshold (default: 40)")
   optional.add_argument("--validation-rama", type=int, metavar="N", default=40, help="Percentage Ramachandran outliers percentile threshold (default: 40)")
   optional.add_argument("--validation-rfree", type=int, metavar="N", default=50, help="Rfree percentile threshold (default: 50)")
@@ -320,11 +322,11 @@ def remove_structures(structures):
     del structures[structure.id]
   for structure in list(structures.values()):
     rwork_diff = structure.metadata["refined_rwork"] - structure.metadata["reported_rwork"]
-    if rwork_diff > 0.05:
-      remove(structure, r"Refined R-work is >5% higher than reported R-work")
+    if rwork_diff > args.tolerance_rwork:
+      remove(structure, "Refined R-work is >%d higher than reported R-work" % args.tolerance_rwork)
   for structure in list(structures.values()):
-    if structure.metadata["data_completeness"] < 90:
-      remove(structure, r"Data completeness is below 90%")
+    if structure.metadata["data_completeness"] < args.tolerance_completeness:
+      remove(structure, "Data completeness is below %d" % args.tolerance_completeness)
   if len(reason_count) > 0:
     print("Removed some structures:")
     for reason in reason_count:
