@@ -33,11 +33,11 @@ def add_optional_arguments(parser):
   optional = parser.add_argument_group("Optional arguments")
   optional.add_argument("--help", action="help", help="Show this help message and exit")
   optional.add_argument("--jobs", metavar="N", default="auto", help="Number of CPU threads to use (default: auto)")
-  optional.add_argument("--model-model-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between two models (default: 95)")
+  optional.add_argument("--model-model-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=70, help="Maximum sequence identity between two models (default: 70)")
   optional.add_argument("--model-model-min-rmsd", type=float, metavar="X", default=1.5, help="Minimum RMSD between two models (default: 1.5)")
   optional.add_argument("--model-target-max-rmsd", type=float, metavar="X", default=3.0, help="Maximum RMSD between model and target (default: 3.0)")
-  optional.add_argument("--model-target-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=95, help="Maximum sequence identity between model and target (default: 95)")
-  optional.add_argument("--model-target-min-qscore", type=float, metavar="X", default=0.1, help="Minimum GESAMT Q-score between model and target (default: 0.1)")
+  optional.add_argument("--model-target-max-seqid", type=int, metavar="[95,90,70,50,40,30]", choices=[95,90,70,50,40,30], default=70, help="Maximum sequence identity between model and target (default: 70)")
+  optional.add_argument("--model-target-min-qscore", type=float, metavar="X", default=0.2, help="Minimum GESAMT Q-score between model and target (default: 0.2)")
   optional.add_argument("--num-models", type=int, metavar="N", default=10, help="Maximum number of models to choose for each unique chain (default: 10)")
   optional.add_argument("--num-structures", type=int, metavar="N", default=200, help="Maximum number of structures to find in each resolution bin (default: 200)")
   optional.add_argument("--res-bins", type=int, metavar="N", default=10, help="Number of resolution bins (default: 10)")
@@ -357,13 +357,16 @@ class Hit:
     self.qscore = float(split[3])
     self.rmsd = float(split[4])
     self.seqid = float(split[5])
-    self.cluster = rcsb.cluster_number(self.pdb, self.chain, args.model_model_max_seqid)
+    self.mmcluster = rcsb.cluster_number(self.pdb, self.chain, args.model_model_max_seqid)
+    self.mtcluster = rcsb.cluster_number(self.pdb, self.chain, args.model_target_max_seqid)
 
 def filtered_gesamt_hits(chain):
+  target_cluster = rcsb.cluster_number(chain.structure.id, chain.id, args.model_target_max_seqid)
   with open(chain.path("gesamt.txt")) as f:
     for line in f:
       if line[0] == "#": continue
       hit = Hit(line)
+      if hit.mtcluster is None or hit.mtcluster == target_cluster: continue
       if (hit.qscore > args.model_target_min_qscore and
           hit.rmsd < args.model_target_max_rmsd and
           hit.seqid < (args.model_target_max_seqid / 100.0)):
@@ -378,9 +381,9 @@ def superpose_result(hit1, hit2):
   return result
 
 def should_choose(hit, chosen_hits):
-  if hit.cluster is None: return False
+  if hit.mmcluster is None: return False
   for chosen_hit in reversed(chosen_hits):
-    if hit.cluster == chosen_hit.cluster: return False
+    if hit.mmcluster == chosen_hit.mmcluster: return False
   for chosen_hit in reversed(chosen_hits):
     result = superpose_result(hit, chosen_hit)
     if "error" in result: return False
