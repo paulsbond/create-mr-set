@@ -1,6 +1,6 @@
 # Create MR Set
 
-Script to create new molecular replacement test sets.
+Script to create new test sets for MR and model building.
 
 ## Requirements
 
