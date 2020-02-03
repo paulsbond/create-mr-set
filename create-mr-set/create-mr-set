@@ -271,11 +271,6 @@ def rename_columns(key, structure):
   prefix = structure.path("cad")
   result = tasks.select_and_rename_columns(hklin, colin, colout, prefix)
   structure.jobs["cad"] = result
-  if "error" not in result:
-    mtz = gemmi.read_mtz_file(result["hklout"])
-    structure.add_metadata("spacegroup", mtz.spacegroup.hm)
-    structure.add_metadata("resolution", round(mtz.resolution_high(), 2))
-    structure.add_metadata("asu_volume", round(mtz.cell.volume / mtz.nsymop))
   return key, structure
 
 def remove_unl_residues(key, structure):
@@ -292,6 +287,10 @@ def refine_deposited_structure(key, structure):
   result = tasks.refine(hklin, xyzin, prefix)
   structure.jobs["refmac"] = result
   if "error" not in result:
+    mtz = gemmi.read_mtz_file(result["hklout"])
+    structure.add_metadata("spacegroup", mtz.spacegroup.hm)
+    structure.add_metadata("resolution", round(mtz.resolution_high(), 2))
+    structure.add_metadata("asu_volume", round(mtz.cell.volume / mtz.nsymop))
     structure.add_metadata("data_completeness", result["data_completeness"])
     structure.add_metadata("refined_rwork", result["final_rwork"])
     structure.add_metadata("refined_rfree", result["final_rfree"])
